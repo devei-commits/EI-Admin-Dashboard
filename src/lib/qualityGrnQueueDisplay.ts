@@ -99,3 +99,29 @@ export function filterQuarantineQueue(grns: QualityGrnQueueInput[]): QualityGrnQ
 export function filterQcHistory(grns: QualityGrnQueueInput[]): QualityGrnQueueInput[] {
   return grns.filter((grn) => isInboundGrnQcTested(toRowInput(grn)));
 }
+
+export type QualityGrnQueueSortKey = 'grnNo' | 'itemLabel' | 'poNo' | 'vendor' | 'statusLabel' | 'qcStatus';
+
+export function searchQualityGrnQueueRows(
+  rows: QualityGrnQueueRow[],
+  search: string,
+): QualityGrnQueueRow[] {
+  const term = search.trim().toLowerCase();
+  if (!term) return rows;
+  return rows.filter((row) =>
+    [row.grnNo, row.itemLabel, row.poNo, row.vendor, row.statusLabel, row.qcStatus].some((field) =>
+      field.toLowerCase().includes(term),
+    ),
+  );
+}
+
+export function sortQualityGrnQueueRows(
+  rows: QualityGrnQueueRow[],
+  sortKey: QualityGrnQueueSortKey,
+  direction: 'asc' | 'desc',
+): QualityGrnQueueRow[] {
+  const sorted = [...rows].sort((a, b) =>
+    a[sortKey].localeCompare(b[sortKey], undefined, { numeric: true }),
+  );
+  return direction === 'asc' ? sorted : sorted.reverse();
+}

@@ -8,6 +8,9 @@ import {
  deleteVendorClient as deleteVendorClientApi,
  importClientMasterExcel,
  importVendorMasterExcel,
+ importZohoVendors,
+ importZohoVendor,
+ type ImportZohoVendorResponse,
 } from '../services/vendorClient.service';
 import { useToast } from '../context/ToastContext';
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
@@ -143,6 +146,10 @@ const VendorClient: React.FC = () => {
  const [clientSortDirection, setClientSortDirection] = useState<SortDirection>('asc');
  const [importingClientExcel, setImportingClientExcel] = useState(false);
  const [importingVendorExcel, setImportingVendorExcel] = useState(false);
+ const [importingZohoVendors, setImportingZohoVendors] = useState(false);
+ const [zohoImportQuery, setZohoImportQuery] = useState('');
+ const [importingZohoVendorOne, setImportingZohoVendorOne] = useState(false);
+ const [zohoImportMatches, setZohoImportMatches] = useState<ImportZohoVendorResponse['matches']>(undefined);
  const clientExcelFileRef = useRef<HTMLInputElement>(null);
  const vendorExcelFileRef = useRef<HTMLInputElement>(null);
 
@@ -441,6 +448,70 @@ const VendorClient: React.FC = () => {
   }
  };
 
+ const handleImportZohoVendors = async () => {
+  setImportingZohoVendors(true);
+  try {
+   const res = await importZohoVendors();
+   addToast(
+    'success',
+    `Zoho vendors: ${res.created} created, ${res.updated} updated (${res.vendorContacts} of ${res.pulledContacts} Zoho contacts were vendors)${res.errors ? `, ${res.errors} errors` : ''}`
+   );
+   if (res.skippedNoEmail > 0) {
+    addToast('info', `${res.skippedNoEmail} Zoho vendor(s) skipped — no email on file, needed to match/dedupe.`);
+   }
+   await queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
+  } catch (err) {
+   addToast('error', err instanceof Error ? err.message : 'Zoho vendor import failed');
+  } finally {
+   setImportingZohoVendors(false);
+  }
+ };
+
+ const describeZohoImportReason = (reason: string | undefined): string => {
+  switch (reason) {
+   case 'not_found': return 'No Zoho contact with that ID.';
+   case 'not_a_vendor': return 'That Zoho contact exists but is not a vendor.';
+   case 'no_match': return 'No vendor in Zoho matches that name.';
+   case 'no_zoho_id': return 'That Zoho contact has no ID (unexpected).';
+   case 'no_email': return 'That Zoho vendor has no email on file — needed to match/dedupe here.';
+   default: return reason || 'Import failed.';
+  }
+ };
+
+ /** target: an exact zohoId (from the input directly, or from picking a match) or a free-text name search. */
+ const runZohoVendorImport = async (target: { zohoId: string } | { search: string }) => {
+  setImportingZohoVendorOne(true);
+  try {
+   const res = await importZohoVendor(target);
+   if (res.imported) {
+    addToast('success', `${res.vendor?.name ?? 'Vendor'} ${res.action === 'updated' ? 'updated' : 'imported'} from Zoho.`);
+    setZohoImportQuery('');
+    setZohoImportMatches(undefined);
+    await queryClient.invalidateQueries({ queryKey: ['vendor-client-page'] });
+    return;
+   }
+   if (res.reason === 'multiple_matches' && res.matches?.length) {
+    setZohoImportMatches(res.matches);
+    addToast('info', `${res.matches.length} vendors matched — pick one below.`);
+    return;
+   }
+   setZohoImportMatches(undefined);
+   addToast('error', describeZohoImportReason(res.reason));
+  } catch (err) {
+   addToast('error', err instanceof Error ? err.message : 'Zoho vendor import failed');
+  } finally {
+   setImportingZohoVendorOne(false);
+  }
+ };
+
+ const handleZohoImportSubmit = () => {
+  const q = zohoImportQuery.trim();
+  if (!q) return;
+  setZohoImportMatches(undefined);
+  // Zoho Books contact IDs are purely numeric; anything else is treated as a name search.
+  void runZohoVendorImport(/^\d+$/.test(q) ? { zohoId: q } : { search: q });
+ };
+
  const handleClientExcelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
   const file = e.target.files?.[0];
   e.target.value = '';
@@ -559,6 +630,15 @@ const VendorClient: React.FC = () => {
         </button>
         <button
          type="button"
+         disabled={importingZohoVendors}
+         onClick={() => void handleImportZohoVendors()}
+         title="Pull every vendor contact from Zoho Books and create/update matching vendor master rows here"
+         className={procBtnSecondary}
+        >
+         {importingZohoVendors ? 'Importing…' : 'Import from Zoho'}
+        </button>
+        <button
+         type="button"
          onClick={() => {
           const rows = filteredVendors.map(v => ({
            code: String(v.data?.entityCode || ''),
@@ -587,6 +667,44 @@ const VendorClient: React.FC = () => {
          + Add Vendor
         </button>
        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+       <input
+        value={zohoImportQuery}
+        onChange={(e) => { setZohoImportQuery(e.target.value); setZohoImportMatches(undefined); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') handleZohoImportSubmit(); }}
+        placeholder="Zoho ID or vendor name…"
+        className={`${procInputClass} max-w-[240px]`}
+       />
+       <button
+        type="button"
+        disabled={importingZohoVendorOne || !zohoImportQuery.trim()}
+        onClick={handleZohoImportSubmit}
+        title="Import (or refresh) exactly one vendor from Zoho, by Zoho ID or by name"
+        className={procBtnSecondary}
+       >
+        {importingZohoVendorOne ? 'Importing…' : 'Import one from Zoho'}
+       </button>
+       {zohoImportMatches && zohoImportMatches.length > 0 && (
+        <div className="w-full rounded-lg border border-border bg-surface p-2">
+         <p className="text-xs text-ink-3 mb-1.5">Multiple Zoho vendors matched — pick one:</p>
+         <div className="flex flex-wrap gap-1.5">
+          {zohoImportMatches.map((m) => (
+           <button
+            key={m.zohoId}
+            type="button"
+            disabled={importingZohoVendorOne}
+            onClick={() => void runZohoVendorImport({ zohoId: m.zohoId })}
+            className="px-2.5 py-1.5 rounded-md border border-border bg-surface-2 hover:bg-surface-3 text-xs text-ink text-left"
+           >
+            <span className="font-semibold">{m.name}</span>
+            {m.email ? <span className="text-ink-3"> · {m.email}</span> : null}
+           </button>
+          ))}
+         </div>
+        </div>
+       )}
       </div>
 
       <div className="bg-surface border border-border rounded-xl p-3 sm:p-4 mb-4">

@@ -360,6 +360,53 @@ export async function importVendorMasterExcel(
   );
 }
 
+export interface ImportZohoVendorsResponse {
+  dryRun: boolean;
+  organizationId?: string | null;
+  pulledContacts: number;
+  vendorContacts: number;
+  created: number;
+  updated: number;
+  skippedNoZohoId: number;
+  skippedNoEmail: number;
+  errors: number;
+  createdVendors?: Array<{ name: string; email: string }>;
+  updatedVendors?: Array<{ name: string; email: string }>;
+}
+
+/** Bulk-pull every vendor contact from Zoho Books and upsert into the local vendor master. */
+export async function importZohoVendors(
+  options?: { dryRun?: boolean; limit?: number },
+): Promise<ImportZohoVendorsResponse> {
+  const params = new URLSearchParams();
+  if (options?.dryRun) params.set('dryRun', 'true');
+  if (options?.limit != null) params.set('limit', String(options.limit));
+  const qs = params.toString();
+  return api.post<ImportZohoVendorsResponse>(
+    `/api/v1/vendor-client/import-zoho-vendors${qs ? `?${qs}` : ''}`,
+    {},
+  );
+}
+
+export interface ImportZohoVendorResponse {
+  imported: boolean;
+  action?: 'created' | 'updated';
+  vendor?: { id?: number; name: string; email: string };
+  reason?: 'not_found' | 'not_a_vendor' | 'no_match' | 'multiple_matches' | 'no_zoho_id' | 'no_email' | string;
+  matches?: Array<{ zohoId: string; name: string; email: string }>;
+}
+
+/**
+ * Import exactly one vendor from Zoho — by Zoho contact ID (exact) or by a name search. A name
+ * search matching more than one vendor returns `matches` instead of guessing; re-call with the
+ * chosen match's `zohoId` to complete the import.
+ */
+export async function importZohoVendor(
+  target: { zohoId: string } | { search: string },
+): Promise<ImportZohoVendorResponse> {
+  return api.post<ImportZohoVendorResponse>('/api/v1/vendor-client/import-zoho-vendor', target);
+}
+
 export async function deleteVendorClient(
   id: string,
 ): Promise<ServiceResult<null>> {

@@ -3749,7 +3749,12 @@ const Planning = () => {
     let soAllocKg = 0;
     let bufferKg = 0;
     customBatches.forEach((b, i) => {
-      const size = workingInList && i === workingBatchPlanIndex ? previewKg : Number(b.sizeKg) || 0;
+      // Once a batch is sent to Production its size is locked server-side (SENT_BATCH_SIZE_LOCKED)
+      // — the Preview qty box still shows/accepts input for it, but that number is no longer a real
+      // edit, so counting it here would show Pending drifting away from 0 as soon as the user typed
+      // anything other than the already-sent size. Always count a sent batch at its real stored size.
+      const useLivePreview = workingInList && i === workingBatchPlanIndex && !sent.includes(i);
+      const size = useLivePreview ? previewKg : Number(b.sizeKg) || 0;
       if (bufferBatchIndexSet.has(i)) bufferKg += size;
       else soAllocKg += size;
     });

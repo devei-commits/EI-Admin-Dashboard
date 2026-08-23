@@ -14,7 +14,8 @@ import {
   type AuditStatus,
 } from '../../constants/procurement';
 import { auditSlaLevel } from '../../lib/procurementSla';
-import { ProcSectionHeader, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcThead, ProcEmpty } from './ProcSection';
+import { ProcSectionHeader, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcEmpty } from './ProcSection';
+import { SortableTableTh } from '../ui/SortableTableTh';
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '—';
@@ -50,6 +51,26 @@ function StatusPill({ status }: { status: AuditStatus }) {
   return <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold ${c.text} ${c.bg} ${c.border}`}>{c.label}</span>;
 }
 
+type AuditSortKey = 'date' | 'auditId' | 'item' | 'location' | 'sih' | 'status' | 'linkedPr' | 'sla';
+type SortDir = 'asc' | 'desc';
+const AUDIT_STATUS_RANK: Record<AuditStatus, number> = { requested: 0, re_audit: 0, audited: 1, updated: 2, terminated: 3 };
+function cmpDateStr(a: string | null | undefined, b: string | null | undefined): number {
+  const ea = a ?? '9999';
+  const eb = b ?? '9999';
+  return ea < eb ? -1 : ea > eb ? 1 : 0;
+}
+function cmpStrLoose(a: string | null | undefined, b: string | null | undefined): number {
+  return (a ?? '').localeCompare(b ?? '');
+}
+function cmpNullableNum(a: number | null | undefined, b: number | null | undefined): number {
+  const an = a ?? null;
+  const bn = b ?? null;
+  if (an == null && bn == null) return 0;
+  if (an == null) return 1;
+  if (bn == null) return -1;
+  return an - bn;
+}
+
 export interface StockAuditTrackerViewProps {
   requests: ProcurementRequest[];
   onOpenPr: (pr: ProcurementRequest) => void;
@@ -64,6 +85,13 @@ export const StockAuditTrackerView: React.FC<StockAuditTrackerViewProps> = ({
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | AuditStatus>('all');
   const [whFilter, setWhFilter] = useState('all');
+  // null = default status-priority sort (requested/re_audit first); set once a header is clicked.
+  const [sortBy, setSortBy] = useState<AuditSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const handleHeaderSort = (key: AuditSortKey) => {
+    if (sortBy === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortBy(key); setSortDir('asc'); }
+  };
 
   const auditLines = useMemo(() => buildInventoryAuditLines(requests), [requests]);
   const reqById = useMemo(() => new Map(requests.map((r) => [r.id, r])), [requests]);
@@ -86,10 +114,28 @@ export const StockAuditTrackerView: React.FC<StockAuditTrackerViewProps> = ({
       if (q && !`${line.auditRef} ${line.itemName} ${line.itemCode} ${line.requestCode} ${line.location}`.toLowerCase().includes(q)) return false;
       return true;
     });
-    const rank: Record<AuditStatus, number> = { requested: 0, re_audit: 0, audited: 1, updated: 2, terminated: 3 };
-    out.sort((a, b) => (rank[a.status] - rank[b.status]) || (b.daysOpen - a.daysOpen));
+    if (sortBy == null) {
+      out.sort((a, b) => (AUDIT_STATUS_RANK[a.status] - AUDIT_STATUS_RANK[b.status]) || (b.daysOpen - a.daysOpen));
+      return out;
+    }
+    const dirMul = sortDir === 'asc' ? 1 : -1;
+    out.sort((a, b) => {
+      let d = 0;
+      switch (sortBy) {
+        case 'date': d = cmpDateStr(a.reqDate, b.reqDate); break;
+        case 'auditId': d = cmpStrLoose(a.line.auditRef, b.line.auditRef); break;
+        case 'item': d = cmpStrLoose(a.line.itemName, b.line.itemName); break;
+        case 'location': d = cmpStrLoose(a.line.location, b.line.location); break;
+        case 'sih': d = cmpNullableNum(a.line.systemQty, b.line.systemQty); break;
+        case 'status': d = AUDIT_STATUS_RANK[a.status] - AUDIT_STATUS_RANK[b.status]; break;
+        case 'linkedPr': d = cmpStrLoose(a.line.requestCode, b.line.requestCode); break;
+        case 'sla': d = b.daysOpen - a.daysOpen; break;
+      }
+      if (d === 0) d = cmpStrLoose(a.line.auditRef, b.line.auditRef);
+      return d * dirMul;
+    });
     return out;
-  }, [auditLines, reqById, search, statusFilter, whFilter]);
+  }, [auditLines, reqById, search, statusFilter, whFilter, sortBy, sortDir]);
 
   const requested = auditLines.filter((l) => deriveAuditStatus(l, reqById.get(l.requestId)) === 'requested').length;
   const awaiting = auditLines.filter((l) => deriveAuditStatus(l, reqById.get(l.requestId)) === 'audited').length;
@@ -127,7 +173,18 @@ export const StockAuditTrackerView: React.FC<StockAuditTrackerViewProps> = ({
         </ProcEmpty>
       ) : (
         <ProcTableCard>
-            <ProcThead cols={['Req Date', 'Audit ID', 'Item', 'WH Location', { label: 'SIH (system)', align: 'center' }, 'Status', 'Linked PR', 'SLA']} />
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-surface-2 border-b border-border [&_th]:bg-surface-2">
+                <SortableTableTh label="Req Date" column="date" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="Audit ID" column="auditId" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="Item" column="item" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="WH Location" column="location" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="SIH (system)" column="sih" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} align="right" />
+                <SortableTableTh label="Status" column="status" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="Linked PR" column="linkedPr" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="SLA" column="sla" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+              </tr>
+            </thead>
             <tbody className="divide-y divide-hairline">
               {rows.map(({ line, pr, status, reqDate, daysOpen }) => {
                 const slaLevel = auditSlaLevel(daysOpen);

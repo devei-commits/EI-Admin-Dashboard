@@ -30,6 +30,8 @@ export interface BatchItemsPanelRow {
   itemType: 'RM' | 'PM';
   itemCode: string;
   itemName: string;
+  /** RM only — INCI name, shown alongside the display name when it differs (small text, per the item name cell). */
+  inciName?: string;
   reqQty: number;
   unit: string;
   sih: number;
@@ -177,11 +179,18 @@ export function buildBatchItemsPanelRows(input: {
     const status = computeBatchItemsPanelStatus(required, free, plannedQty, poQty, inTransit, underGrn, reserved);
     const shortfall = Math.max(0, required - free);
 
+    const itemName = rm?.name ?? line.name ?? line.inci_name ?? code;
+    const inciNameRaw = (rm?.inci ?? line.inci_name ?? '').trim();
+    // Only worth a second line when it actually adds information over the display name.
+    const inciName =
+      inciNameRaw && inciNameRaw.toLowerCase() !== itemName.trim().toLowerCase() ? inciNameRaw : undefined;
+
     rows.push({
       id: `rm-${raw_material_id ?? code}-${idx}`,
       itemType: 'RM',
       itemCode: code || String(raw_material_id ?? ''),
-      itemName: line.inci_name ?? line.name ?? rm?.name ?? code,
+      itemName,
+      inciName,
       reqQty: required,
       unit: line.uom ?? 'KG',
       sih,

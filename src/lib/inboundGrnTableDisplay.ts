@@ -47,6 +47,7 @@ export type InboundGrnRowInput = {
   grnDate?: string | null;
   locationZone?: string | null;
   locationPrefix?: string | null;
+  assignedTo?: string | null;
   grnBatchMfg?: string | null;
   mfgBatch?: string | null;
   noOfBoxes?: number | null;
@@ -381,10 +382,14 @@ export function inboundGrnActionView(grn: InboundGrnRowInput): { label: string; 
   const statusView = buildInboundGrnStatusView(grn);
 
   /** Rack first, then labels: an unracked GRN goes to the Assign Rack popup; once racked, what
-      remains (documents + QR labels + completion) lives in GRN Copy. */
+      remains (documents + QR labels + completion) lives in GRN Copy. "Racked" requires an
+      assignee too — GRN Copy's own completion check refuses to finish a GRN with no assignedTo,
+      so a rack-only save must keep routing back to Assign Rack or the two screens deadlock again
+      (rack chosen, GRN Copy says "go assign rack", but the row button no longer opens it). */
   const assignRackOrGrnCopy = (): { label: string; prefix: string | null } => {
     const pfx = String(grn.locationPrefix ?? '').trim();
-    const racked = pfx !== '' && pfx.toUpperCase() !== 'DEFAULT';
+    const racked =
+      pfx !== '' && pfx.toUpperCase() !== 'DEFAULT' && String(grn.assignedTo ?? '').trim() !== '';
     return racked
       ? { label: 'GRN Copy', prefix: '📋' }
       : { label: 'Assign Rack', prefix: '📍' };
@@ -423,7 +428,8 @@ export function inboundGrnActionView(grn: InboundGrnRowInput): { label: string; 
       return { label: 'Confirm Receipt', prefix: '✓' };
     }
     const pfx = String(grn.locationPrefix ?? '').trim();
-    const racked = pfx !== '' && pfx.toUpperCase() !== 'DEFAULT'; // 'DEFAULT' = auto placeholder, not a real rack
+    const racked =
+      pfx !== '' && pfx.toUpperCase() !== 'DEFAULT' && String(grn.assignedTo ?? '').trim() !== ''; // 'DEFAULT' = auto placeholder, not a real rack
     if (racked) {
       return { label: 'GRN Copy', prefix: '📋' }; // landed + racked → nothing left but pull the copy
     }

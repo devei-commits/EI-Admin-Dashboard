@@ -1954,12 +1954,27 @@ const Procurement: React.FC = () => {
   const draftPOSidebarTotals = useMemo(() => {
     if (!selectedDraftPO) return null;
     const vendorNorm = (selectedDraftPO.vendor ?? '').trim().toLowerCase();
-    const gstPercent = 18;
     const confirmedQuote = selectedDraftPO.requestId
       ? quotes.find((q) => q.requestId === selectedDraftPO.requestId && q.status === 'Confirmed')
       : null;
     const enrichedLines: DraftPOLineItem[] = selectedDraftPO.lineItems.map((line) => {
       const qty = parseFloat(String(line.qty).replace(/[^\d.]/g, '')) || 0;
+      const gstPercent = line.gstPercent != null ? Number(line.gstPercent) : 18;
+      const storedPrice = Number(line.pricePerUnit) || 0;
+
+      if (storedPrice > 0) {
+        // The line already carries a real price — set directly via the qty/price/GST editor (or
+        // a prior save). Trust it and its already-computed GST/total instead of silently
+        // overriding with a confirmed-quote or Items List catalog price, which previously made
+        // an explicit price/GST edit (e.g. GST set to 0%) revert to the catalog value here even
+        // though the edit itself had saved correctly.
+        const subtotal = qty * storedPrice;
+        const gstAmount = line.gstAmount != null ? Number(line.gstAmount) : parseFloat((subtotal * (gstPercent / 100)).toFixed(2));
+        const lineTotal = line.lineTotal != null ? Number(line.lineTotal) : parseFloat((subtotal + gstAmount).toFixed(2));
+        return { ...line, pricePerUnit: storedPrice, gstPercent, gstAmount, lineTotal };
+      }
+
+      // No price yet on the line — fall back to a confirmed quote, then the Items List vendor price.
       const nameNorm = (line.item ?? '').trim().toLowerCase();
       const codeNorm = (line.itemCode ?? '').trim().toLowerCase();
       let price: number | undefined;
@@ -1976,7 +1991,7 @@ const Procurement: React.FC = () => {
           (codeNorm && vendorItemPriceMap.get(`${codeNorm}|${vendorNorm}`)) ??
           (nameNorm && vendorItemPriceMap.get(`${nameNorm}|${vendorNorm}`));
       }
-      const priceFromList = price ?? line.pricePerUnit ?? 0;
+      const priceFromList = price ?? 0;
       const subtotal = qty * priceFromList;
       const gstAmount = parseFloat((subtotal * (gstPercent / 100)).toFixed(2));
       const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
@@ -3564,7 +3579,9 @@ const Procurement: React.FC = () => {
               ? (linkedPO.rawItems as any[]).map((i: any, idx: number) => {
                 const qty = Number(i.quantity) || 0;
                 const rate = Number(i.rate ?? i.price ?? 0);
-                const gstPct = Number(i.tax) || 18;
+                // `|| 18` treated an explicit 0% (tax genuinely removed) the same as "missing" and
+                // silently forced it back to 18% — only default when tax is truly absent.
+                const gstPct = i.tax != null && i.tax !== '' ? Number(i.tax) : 18;
                 const subtotal = qty * rate;
                 const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
                 const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
@@ -3736,7 +3753,9 @@ const Procurement: React.FC = () => {
       const lineItems = rawItems.map((i: any, idx: number) => {
         const qty = Number(i.quantity) || 0;
         const rate = Number(i.rate ?? i.price ?? 0);
-        const gstPct = Number(i.tax) || 18;
+        // `|| 18` treated an explicit 0% (tax genuinely removed) the same as "missing" and
+        // silently forced it back to 18% — only default when tax is truly absent.
+        const gstPct = i.tax != null && i.tax !== '' ? Number(i.tax) : 18;
         const subtotal = qty * rate;
         const gstAmount = parseFloat((subtotal * (gstPct / 100)).toFixed(2));
         const lineTotal = parseFloat((subtotal + gstAmount).toFixed(2));
@@ -10733,23 +10752,28 @@ const Procurement: React.FC = () => {
                     }
                   }
 
+                  const savedSubtotal = form.lineItems.reduce((s, l) => s + (l.lineTotal - (l.gstAmount ?? 0)), 0);
+                  const savedGstTotal = form.lineItems.reduce((s, l) => s + (l.gstAmount ?? 0), 0);
+                  const savedGrandTotal = form.lineItems.reduce((s, l) => s + l.lineTotal, 0);
+                  const savedFields = {
+                    vendor: form.vendor,
+                    paymentTerms: form.paymentTerms,
+                    expectedDelivery: form.expectedDelivery,
+                    deliveryAddress: form.deliveryAddress,
+                    lineItems: form.lineItems,
+                    subtotal: savedSubtotal,
+                    gstTotal: savedGstTotal,
+                    grandTotal: savedGrandTotal,
+                  };
                   setDraftPOs((prev) =>
-                    prev.map((po) =>
-                      po.id === d.id
-                        ? {
-                          ...po,
-                          vendor: form.vendor,
-                          paymentTerms: form.paymentTerms,
-                          expectedDelivery: form.expectedDelivery,
-                          deliveryAddress: form.deliveryAddress,
-                          lineItems: form.lineItems,
-                          subtotal: form.lineItems.reduce((s, l) => s + (l.lineTotal - (l.gstAmount ?? 0)), 0),
-                          gstTotal: form.lineItems.reduce((s, l) => s + (l.gstAmount ?? 0), 0),
-                          grandTotal: form.lineItems.reduce((s, l) => s + l.lineTotal, 0),
-                        }
-                        : po
-                    )
+                    prev.map((po) => (po.id === d.id ? { ...po, ...savedFields } : po))
                   );
+                  // The read-only detail popup (selectedDraftPO) holds its own snapshot taken when it
+                  // was opened — Edit opens on top of it without closing it, so without this it kept
+                  // showing pre-edit qty/GST/totals after Save even though the edit itself succeeded.
+                  if (selectedDraftPO?.id === d.id) {
+                    setSelectedDraftPO((prev) => (prev ? { ...prev, ...savedFields } : prev));
+                  }
                   void invalidatePurchaseOrdersQueries();
                   setEditDraftPOTarget(null);
                   addToast('success', `Draft PO ${d.dpoNumber} updated`);

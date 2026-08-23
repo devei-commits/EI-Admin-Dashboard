@@ -13,7 +13,8 @@ import {
 } from '../../constants/procurement';
 import { quoteSlaLevel } from '../../lib/procurementSla';
 import { type RfqTemplateData } from './RfqTemplatePopup';
-import { ProcSectionHeader, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcThead, ProcLoading, ProcError, ProcEmpty, procChipClass } from './ProcSection';
+import { ProcSectionHeader, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcLoading, ProcError, ProcEmpty, procChipClass } from './ProcSection';
+import { SortableTableTh } from '../ui/SortableTableTh';
 import { QuotationEditPopup } from './QuotationEditPopup';
 import { RequestQuotationModal, type RequestQuotationContext } from './RequestQuotationModal';
 import RecordDetailModal, { type DetailSection } from '../ui/RecordDetailModal';
@@ -42,6 +43,22 @@ function mapVendorQuoteStatus(s: VendorQuote['status']): QuoteStatus {
   if (s === 'Confirmed') return 'completed';
   if (s === 'Not Selected') return 'terminated';
   return 'requested';
+}
+
+type QuoteSortKey = 'date' | 'qtId' | 'item' | 'vendor' | 'targetPrice' | 'status' | 'sla';
+type SortDir = 'asc' | 'desc';
+const QUOTE_STATUS_RANK: Record<QuoteStatus, number> = { requested: 0, draft: 1, completed: 2, terminated: 3 };
+
+function cmpNullableNum(a: number | null, b: number | null): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return a - b;
+}
+function cmpDateStr(a: string | null, b: string | null): number {
+  const ea = a ?? '9999';
+  const eb = b ?? '9999';
+  return ea < eb ? -1 : ea > eb ? 1 : 0;
 }
 
 interface QuoteRow {
@@ -95,6 +112,13 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
   // Edit an existing RFQ (planning_quotation_ask) in the RequestQuotationModal.
   const [editingAsk, setEditingAsk] = useState<PlanningQuotationAsk | null>(null);
   const [detailRow, setDetailRow] = useState<QuoteRow | null>(null);
+  // null = default status-priority sort (awaiting response first); set once a header is clicked.
+  const [sortBy, setSortBy] = useState<QuoteSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const handleHeaderSort = (key: QuoteSortKey) => {
+    if (sortBy === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortBy(key); setSortDir('asc'); }
+  };
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -189,10 +213,27 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
       if (q && !`${r.qtId} ${r.itemName} ${r.itemCode} ${r.vendors}`.toLowerCase().includes(q)) return false;
       return true;
     });
-    const rank: Record<QuoteStatus, number> = { requested: 0, draft: 1, completed: 2, terminated: 3 };
-    merged.sort((a, b) => (rank[a.status] - rank[b.status]) || (b.daysOpen - a.daysOpen));
+    if (sortBy == null) {
+      merged.sort((a, b) => (QUOTE_STATUS_RANK[a.status] - QUOTE_STATUS_RANK[b.status]) || (b.daysOpen - a.daysOpen));
+      return merged;
+    }
+    const dirMul = sortDir === 'asc' ? 1 : -1;
+    merged.sort((a, b) => {
+      let d = 0;
+      switch (sortBy) {
+        case 'date': d = cmpDateStr(a.requestDate, b.requestDate); break;
+        case 'qtId': d = a.qtId.localeCompare(b.qtId); break;
+        case 'item': d = a.itemName.localeCompare(b.itemName); break;
+        case 'vendor': d = a.vendors.localeCompare(b.vendors); break;
+        case 'targetPrice': d = cmpNullableNum(a.targetPrice, b.targetPrice); break;
+        case 'status': d = QUOTE_STATUS_RANK[a.status] - QUOTE_STATUS_RANK[b.status]; break;
+        case 'sla': d = b.daysOpen - a.daysOpen; break;
+      }
+      if (d === 0) d = a.qtId.localeCompare(b.qtId);
+      return d * dirMul;
+    });
     return merged;
-  }, [asks, vendorQuotes, search, statusFilter, sourceFilter]);
+  }, [asks, vendorQuotes, search, statusFilter, sourceFilter, sortBy, sortDir]);
 
   const awaiting = rows.filter((r) => r.status === 'requested').length;
   const breached = rows.filter((r) => r.status === 'requested' && quoteSlaLevel(r.daysOpen) === 'bad').length;
@@ -254,7 +295,20 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
         <ProcEmpty icon={<MessageSquare size={30} />}>No quote requests.</ProcEmpty>
       ) : (
         <ProcTableCard>
-            <ProcThead cols={['Req Date', 'QT Req ID', 'Source', 'Item', 'Vendor(s)', { label: 'Req Qty', align: 'right' }, { label: 'Target Price', align: 'right' }, 'Quote Status', 'SLA', 'Actions']} />
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-surface-2 border-b border-border [&_th]:bg-surface-2">
+                <SortableTableTh label="Req Date" column="date" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="QT Req ID" column="qtId" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">Source</th>
+                <SortableTableTh label="Item" column="item" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="Vendor(s)" column="vendor" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <th scope="col" className="px-3 py-2 text-right text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">Req Qty</th>
+                <SortableTableTh label="Target Price" column="targetPrice" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} align="right" />
+                <SortableTableTh label="Quote Status" column="status" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="SLA" column="sla" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">Actions</th>
+              </tr>
+            </thead>
             <tbody className="divide-y divide-hairline">
               {rows.map((r) => {
                 const sc = QUOTE_STATUS_CONFIG[r.status];

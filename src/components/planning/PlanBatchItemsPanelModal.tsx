@@ -163,11 +163,11 @@ export function PlanBatchItemsPanelModal({
           </div>
         ) : null}
         <div className="p-4 overflow-x-auto max-h-[70vh]">
-          <table className="w-full text-sm min-w-[1100px]">
+          <table className="w-full text-sm min-w-[1160px]">
             <thead className="sticky top-0 z-20 [&_th]:bg-surface-2">
               <tr className="bg-surface-2 border-b border-border text-[11px]">
                 <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2 whitespace-nowrap">Item Code</th>
-                <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2 min-w-[120px]">Item Name</th>
+                <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2 min-w-[180px]">Item Name</th>
                 <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2 whitespace-nowrap">Req Qty</th>
                 <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">SIH</th>
                 <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2 whitespace-nowrap">
@@ -206,7 +206,12 @@ export function PlanBatchItemsPanelModal({
                       {row.itemCode || '—'}
                     </button>
                   </td>
-                  <td className="px-3 py-2 text-ink">{row.itemName}</td>
+                  <td className="px-3 py-2 text-ink">
+                    <p className="leading-snug">{row.itemName}</p>
+                    {row.inciName ? (
+                      <p className="text-[10px] text-ink-3 leading-snug mt-0.5">{row.inciName}</p>
+                    ) : null}
+                  </td>
                   <td className="px-3 py-2 text-right font-mono text-ink">
                     {formatBatchItemsPanelQty(row.reqQty, row.unit)}
                   </td>

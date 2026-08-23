@@ -9,7 +9,8 @@ import { fetchGrnTracker, type GrnTrackerRow } from '../../services/grn.service'
 import { GRN_STAGE_CONFIG, GRN_STAGE_ORDER, SLA_LEVEL_CLASSES, type GrnStage } from '../../constants/procurement';
 import { grnInTransitSlaLevel } from '../../lib/procurementSla';
 import { GrnStageTimelineModal } from './GrnStageTimelineModal';
-import { ProcSectionHeader, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcThead, ProcLoading, ProcError, ProcEmpty } from './ProcSection';
+import { ProcSectionHeader, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcLoading, ProcError, ProcEmpty } from './ProcSection';
+import { SortableTableTh } from '../ui/SortableTableTh';
 import RecordDetailModal, { type DetailSection } from '../ui/RecordDetailModal';
 
 function fmtDate(d: string | null | undefined): string {
@@ -42,6 +43,17 @@ function stageDisplayConfig(stage: string) {
   return GRN_STAGE_CONFIG[isGrnStage(stage) ? stage : 'in_transit'];
 }
 
+type GrnSortKey = 'date' | 'sb' | 'grn' | 'po' | 'vendor' | 'item' | 'poQty' | 'shipped' | 'expected' | 'stage' | 'vehicle';
+type SortDir = 'asc' | 'desc';
+function cmpDateStr(a: string | null | undefined, b: string | null | undefined): number {
+  const ea = a ?? '9999';
+  const eb = b ?? '9999';
+  return ea < eb ? -1 : ea > eb ? 1 : 0;
+}
+function cmpStrLoose(a: string | null | undefined, b: string | null | undefined): number {
+  return (a ?? '').localeCompare(b ?? '');
+}
+
 function StagePill({ stage, onClick }: { stage: string; onClick?: () => void }) {
   const c = stageDisplayConfig(stage);
   const inner = (
@@ -71,6 +83,13 @@ export const GrnTrackerView: React.FC<GrnTrackerViewProps> = ({ onCountChange })
   const [search, setSearch] = useState('');
   const [timelineRow, setTimelineRow] = useState<GrnTrackerRow | null>(null);
   const [detailRow, setDetailRow] = useState<GrnTrackerRow | null>(null);
+  // null = default sort (newest shipment batch first); set once a header is clicked.
+  const [sortBy, setSortBy] = useState<GrnSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const handleHeaderSort = (key: GrnSortKey) => {
+    if (sortBy === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortBy(key); setSortDir('asc'); }
+  };
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -96,9 +115,31 @@ export const GrnTrackerView: React.FC<GrnTrackerViewProps> = ({ onCountChange })
       if (q && !`${r.grnNo} ${r.sbCode ?? ''} ${r.poNo ?? ''} ${r.vendor ?? ''} ${r.item.name} ${r.item.code}`.toLowerCase().includes(q)) return false;
       return true;
     });
-    out.sort((a, b) => (b.sbCode ?? '').localeCompare(a.sbCode ?? '') || a.grnNo.localeCompare(b.grnNo));
+    if (sortBy == null) {
+      out.sort((a, b) => (b.sbCode ?? '').localeCompare(a.sbCode ?? '') || a.grnNo.localeCompare(b.grnNo));
+      return out;
+    }
+    const dirMul = sortDir === 'asc' ? 1 : -1;
+    out.sort((a, b) => {
+      let d = 0;
+      switch (sortBy) {
+        case 'date': d = cmpDateStr(a.shippedDate, b.shippedDate); break;
+        case 'sb': d = cmpStrLoose(a.sbCode, b.sbCode); break;
+        case 'grn': d = cmpStrLoose(a.grnNo, b.grnNo); break;
+        case 'po': d = cmpStrLoose(a.poNo, b.poNo); break;
+        case 'vendor': d = cmpStrLoose(a.vendor, b.vendor); break;
+        case 'item': d = cmpStrLoose(a.item.name, b.item.name); break;
+        case 'poQty': d = a.poQty - b.poQty; break;
+        case 'shipped': d = a.shippedQty - b.shippedQty; break;
+        case 'expected': d = cmpDateStr(a.expectedDate, b.expectedDate); break;
+        case 'stage': d = GRN_STAGE_ORDER.indexOf(a.stage as GrnStage) - GRN_STAGE_ORDER.indexOf(b.stage as GrnStage); break;
+        case 'vehicle': d = cmpStrLoose(a.vehicleNo, b.vehicleNo); break;
+      }
+      if (d === 0) d = cmpStrLoose(a.grnNo, b.grnNo);
+      return d * dirMul;
+    });
     return out;
-  }, [rows, stageFilter, vendorFilter, search]);
+  }, [rows, stageFilter, vendorFilter, search, sortBy, sortDir]);
 
   const sbCounts = useMemo(() => {
     const m = new Map<string, number>();
@@ -146,7 +187,22 @@ export const GrnTrackerView: React.FC<GrnTrackerViewProps> = ({ onCountChange })
         <ProcEmpty icon={<Package size={30} />}>No GRNs yet — create one via a PO&apos;s Initiate Shipment.</ProcEmpty>
       ) : (
         <ProcTableCard>
-            <ProcThead cols={['Shipped Date', 'SB #', 'GRN #', 'PO #', 'Vendor', 'Item', { label: 'PO Qty', align: 'center' }, { label: 'Shipped', align: 'center' }, 'Expected', 'GRN Stage', 'SLA', 'Vehicle']} />
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-surface-2 border-b border-border [&_th]:bg-surface-2">
+                <SortableTableTh label="Shipped Date" column="date" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="SB #" column="sb" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="GRN #" column="grn" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="PO #" column="po" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="Vendor" column="vendor" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="Item" column="item" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="PO Qty" column="poQty" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} align="right" />
+                <SortableTableTh label="Shipped" column="shipped" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} align="right" />
+                <SortableTableTh label="Expected" column="expected" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="GRN Stage" column="stage" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">SLA</th>
+                <SortableTableTh label="Vehicle" column="vehicle" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+              </tr>
+            </thead>
             <tbody className="divide-y divide-hairline">
               {filtered.map((r) => {
                 const sibling = r.sbCode && (sbCounts.get(r.sbCode) ?? 0) > 1;

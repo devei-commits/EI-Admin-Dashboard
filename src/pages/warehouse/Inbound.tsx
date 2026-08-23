@@ -311,6 +311,7 @@ function toInboundRowInput(grn: GRNRecord, lineItem: LineItem | null): InboundGr
     grnDate: grn.grnDate,
     locationZone: grn.locationZone,
     locationPrefix: grn.locationPrefix,
+    assignedTo: grn.assignedTo,
     grnBatchMfg: grn.grnBatchMfg,
     mfgBatch: grn.mfgBatch,
     noOfBoxes: grn.noOfBoxes,
@@ -931,6 +932,12 @@ const GRNDetailModal = ({
     }
     if (!qcBy.trim()) completionBlockers.push('QC by (inspector name) is required.');
   }
+  // Unlike QC/labels, this one is NOT mode-gated: GrnCopyReceiptModal's own completion check
+  // (putawayMissing in GrnCopyReceiptModal.tsx) requires grn.assignedTo to be set before it will
+  // mark the GRN complete. Letting Assign Rack save with "Unassigned" (as a prior fix here did,
+  // reasoning the field was just being "re-picked") persists assignedTo: '' and permanently blocks
+  // GRN Copy's Accept from ever completing the GRN — see GRN-2026-0186, which stayed stuck on
+  // "Under GRN" through repeated Accept clicks because of exactly this.
   if (!assignedTo.trim()) completionBlockers.push('Assigned To must be allocated.');
   // Labels are NOT a blocker for this step. The rack code is printed on the QR labels, so the rack
   // is chosen first and GRN Copy — where labels are generated — is the last step. Requiring labels

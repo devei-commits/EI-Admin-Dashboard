@@ -128,6 +128,7 @@ describe('inboundGrnTableDisplay', () => {
         qcStatus: 'Passed',
         generatedLabels: [{}],
         locationPrefix: 'SW-R1',
+        assignedTo: 'Bhaskar',
       }),
     ).toEqual({
       label: 'GRN Copy',
@@ -142,6 +143,27 @@ describe('inboundGrnTableDisplay', () => {
     ).toEqual({
       label: 'QC Check',
       prefix: '🧪',
+    });
+  });
+
+  // GRN-2026-0186: a rack was saved but "Assigned To" was left "Unassigned", which permanently
+  // blocked GRN Copy's completion check (it requires assignedTo). The row must keep offering
+  // Assign Rack in that state — routing to GRN Copy here would strand the operator with no way
+  // back to the field that's actually missing.
+  it('keeps offering Assign Rack when a rack is set but no assignee yet', () => {
+    expect(
+      inboundGrnActionView({
+        grnNo: 'x',
+        status: 'On Hold',
+        workflowSteps: ['Sent to QC', 'Label Generation'],
+        qcStatus: 'Passed',
+        generatedLabels: [{}],
+        locationPrefix: 'SW-R1',
+        assignedTo: '',
+      }),
+    ).toEqual({
+      label: 'Assign Rack',
+      prefix: '📍',
     });
   });
 

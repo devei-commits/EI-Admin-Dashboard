@@ -14,7 +14,8 @@ import {
   type PrSource, type SlaLevel,
 } from '../../constants/procurement';
 import { slaLevelFromDaysOpen, expectedVsNeedByLevel } from '../../lib/procurementSla';
-import { ProcSectionHeader, ProcTabs, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcThead, ProcEmpty, procChipClass } from './ProcSection';
+import { ProcSectionHeader, ProcTabs, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcEmpty, procChipClass } from './ProcSection';
+import { SortableTableTh } from '../ui/SortableTableTh';
 import RecordDetailModal, { type DetailSection } from '../ui/RecordDetailModal';
 
 // ─── Date helpers ────────────────────────────────────────────────────────────
@@ -160,6 +161,24 @@ type SourceFilter = 'all' | PrSource;
 type SlaFilter = 'all' | SlaLevel;
 type TypeFilter = 'all' | 'RM' | 'PM';
 type PrTab = 'active' | 'history';
+type PrSortKey = 'date' | 'pr' | 'item' | 'vendor' | 'reqQty' | 'moq' | 'rop' | 'expectedConnecting' | 'sla';
+type SortDir = 'asc' | 'desc';
+
+/** null-safe compare: nulls always sort last regardless of direction. */
+function cmpNullable(a: number | null, b: number | null): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  return a - b;
+}
+function cmpStr(a: string, b: string): number {
+  return a.localeCompare(b);
+}
+function cmpDateStr(a: string | null, b: string | null): number {
+  const ea = a ?? '9999';
+  const eb = b ?? '9999';
+  return ea < eb ? -1 : ea > eb ? 1 : 0;
+}
 
 /** Active = still in the request queue (New/Quoted). History = released to a Draft PO or beyond. */
 const PR_ACTIVE_STATUSES = new Set(['New', 'Quoted']);
@@ -177,6 +196,13 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
   const [vendorFilter, setVendorFilter] = useState<string>('all');
   const [detailRow, setDetailRow] = useState<InboxRow | null>(null);
+  // null = default SLA-priority sort (most urgent first); set once a column header is clicked.
+  const [sortBy, setSortBy] = useState<PrSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const handleHeaderSort = (key: PrSortKey) => {
+    if (sortBy === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortBy(key); setSortDir('asc'); }
+  };
 
   const allRows = useMemo(() => requests.map(buildRow), [requests]);
   const activeCount = useMemo(() => allRows.filter((r) => prIsActive(r.req.status)).length, [allRows]);
@@ -202,16 +228,34 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
       }
       return true;
     });
-    // Default sort: SLA ascending (most-overdue first), then expected-connecting asc.
+    if (sortBy == null) {
+      // Default sort: SLA ascending (most-overdue first), then expected-connecting asc.
+      filtered.sort((a, b) => {
+        if (SLA_RANK[a.slaLevel] !== SLA_RANK[b.slaLevel]) return SLA_RANK[a.slaLevel] - SLA_RANK[b.slaLevel];
+        if (a.daysOpen !== b.daysOpen) return b.daysOpen - a.daysOpen;
+        return cmpDateStr(a.expectedConnecting, b.expectedConnecting);
+      });
+      return filtered;
+    }
+    const dirMul = sortDir === 'asc' ? 1 : -1;
     filtered.sort((a, b) => {
-      if (SLA_RANK[a.slaLevel] !== SLA_RANK[b.slaLevel]) return SLA_RANK[a.slaLevel] - SLA_RANK[b.slaLevel];
-      if (a.daysOpen !== b.daysOpen) return b.daysOpen - a.daysOpen;
-      const ea = a.expectedConnecting ?? '9999';
-      const eb = b.expectedConnecting ?? '9999';
-      return ea < eb ? -1 : ea > eb ? 1 : 0;
+      let d = 0;
+      switch (sortBy) {
+        case 'date': d = cmpDateStr(a.requestedDate, b.requestedDate); break;
+        case 'pr': d = cmpStr(a.prNumber, b.prNumber); break;
+        case 'item': d = cmpStr(a.primary?.itemName ?? '', b.primary?.itemName ?? ''); break;
+        case 'vendor': d = cmpStr(a.vendorName, b.vendorName); break;
+        case 'reqQty': d = cmpNullable(a.reqQty, b.reqQty); break;
+        case 'moq': d = cmpNullable(a.moq, b.moq); break;
+        case 'rop': d = cmpNullable(a.rop, b.rop); break;
+        case 'expectedConnecting': d = cmpDateStr(a.expectedConnecting, b.expectedConnecting); break;
+        case 'sla': d = SLA_RANK[a.slaLevel] - SLA_RANK[b.slaLevel] || b.daysOpen - a.daysOpen; break;
+      }
+      if (d === 0) d = cmpStr(a.prNumber, b.prNumber);
+      return d * dirMul;
     });
     return filtered;
-  }, [allRows, tab, search, sourceFilter, slaFilter, typeFilter, vendorFilter]);
+  }, [allRows, tab, search, sourceFilter, slaFilter, typeFilter, vendorFilter, sortBy, sortDir]);
 
   const breached = allRows.filter((r) => r.slaLevel === 'bad').length;
   const fromPlanning = allRows.filter((r) => r.source === 'planning').length;
@@ -300,7 +344,20 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
         <ProcEmpty>No procurement requests match these filters.</ProcEmpty>
       ) : (
         <ProcTableCard>
-            <ProcThead cols={['Req Date', 'PR #', 'Item', 'Vendor', { label: 'Req Qty', align: 'center' }, { label: 'MOQ', align: 'center' }, { label: 'ROP', align: 'center' }, 'Expected Connecting', 'SLA', 'Actions']} />
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-surface-2 border-b border-border [&_th]:bg-surface-2">
+                <SortableTableTh label="Req Date" column="date" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="PR #" column="pr" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="Item" column="item" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="Vendor" column="vendor" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="Req Qty" column="reqQty" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} align="right" />
+                <SortableTableTh label="MOQ" column="moq" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} align="right" />
+                <SortableTableTh label="ROP" column="rop" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} align="right" />
+                <SortableTableTh label="Expected Connecting" column="expectedConnecting" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <SortableTableTh label="SLA" column="sla" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
+                <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">Actions</th>
+              </tr>
+            </thead>
             <tbody className="divide-y divide-hairline">
               {rows.map((r) => {
                 const expLevel = expectedVsNeedByLevel(r.expectedConnecting, r.needBy);

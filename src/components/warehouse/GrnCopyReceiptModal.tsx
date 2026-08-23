@@ -599,6 +599,16 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
     return [updatedLine] as UpdateGRNPayload['lineItems'];
   };
 
+  /**
+   * units_per_box is an `integer` column, but a pack's actual quantity is whatever unit the item
+   * is measured in (e.g. kg for RM) and is routinely fractional — a 1 kg item split across 5 packs
+   * gives 0.2 kg/pack. Sending that straight through 400s the update with a Postgres type error.
+   * This scalar is only ever a rough summary (the real per-box breakdown is unitsPerBoxList, sent
+   * separately to generateGRNLabels), so rounding here is safe.
+   */
+  const toIntegerUnitsPerBox = (qty: number | null | undefined): number | null =>
+    qty == null ? null : Math.round(qty);
+
   const persistReceiptDocuments = async (
     mergedDocs: InboundGrnSourceDocuments,
     physicalTotal: number,
@@ -607,7 +617,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
     await updateGRN(grn.id, {
       sourceDocuments: mergedDocs,
       noOfBoxes: packRows.length,
-      unitsPerBox: packRows[0]?.actualQty ?? grn.unitsPerBox ?? null,
+      unitsPerBox: toIntegerUnitsPerBox(packRows[0]?.actualQty ?? grn.unitsPerBox ?? null),
       lineItems: buildLineItemsPayload(physicalTotal),
       ...extra,
     });
@@ -638,7 +648,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
       productName: grnLineItemDisplayName(lineItem),
     });
     const noOfBoxes = packRows.length;
-    const unitsPerBox = packRows[0]?.actualQty ?? grn.unitsPerBox ?? null;
+    const unitsPerBox = toIntegerUnitsPerBox(packRows[0]?.actualQty ?? grn.unitsPerBox ?? null);
     const workflowSteps = labelRes.workflowSteps ?? verifiedPayload.workflowSteps;
     setSourceDocuments(mergedDocs);
     setPreviewLabels(labelRes.labels ?? []);
@@ -1143,6 +1153,18 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              {previewLabels && qcAlreadyDecided ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreviewLabels(null);
+                    setCurrentStep(7);
+                  }}
+                  className="rounded-lg bg-ok px-4 py-2 text-sm font-semibold text-white hover:bg-ok"
+                >
+                  Continue · Review & Complete
+                </button>
+              ) : null}
               {previewLabels ? (
                 <button
                   type="button"
@@ -1201,8 +1223,10 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
               <strong>
                 {previewLabels.length} label{previewLabels.length === 1 ? '' : 's'} generated.
               </strong>{' '}
-              Print them now, or reopen this GRN from Inbound to print later. The GRN is verified — use
-              Send to QC when ready.
+              Print them now, or reopen this GRN from Inbound to print later.{' '}
+              {qcAlreadyDecided
+                ? 'QC is already passed — use Continue · Review & Complete above to finish this GRN.'
+                : 'The GRN is verified — use Send to QC when ready.'}
             </div>
             <GrnLabelPreview
               labels={previewLabels}

@@ -4,6 +4,8 @@ import {
   filterInboundQcQueue,
   filterQuarantineQueue,
   filterQcHistory,
+  searchQualityGrnQueueRows,
+  sortQualityGrnQueueRows,
   type QualityGrnQueueInput,
 } from '../qualityGrnQueueDisplay';
 
@@ -45,5 +47,24 @@ describe('qualityGrnQueueDisplay', () => {
   it('filters QC history', () => {
     const passed = baseGrn({ qcStatus: 'Pass' });
     expect(filterQcHistory([baseGrn(), passed]).map((g) => g.id)).toEqual(['1']);
+  });
+
+  it('searches queue rows across GRN, item, PO and vendor', () => {
+    const rows = [
+      buildQualityGrnQueueRow(baseGrn({ id: '1', vendor: 'Acme' })),
+      buildQualityGrnQueueRow(baseGrn({ id: '2', vendor: 'Zenith', grnNo: 'GRN-002' })),
+    ];
+    expect(searchQualityGrnQueueRows(rows, 'acme').map((r) => r.id)).toEqual(['1']);
+    expect(searchQualityGrnQueueRows(rows, 'retinol').map((r) => r.id)).toEqual(['1', '2']);
+    expect(searchQualityGrnQueueRows(rows, '').map((r) => r.id)).toEqual(['1', '2']);
+  });
+
+  it('sorts queue rows by a column in either direction', () => {
+    const rows = [
+      buildQualityGrnQueueRow(baseGrn({ id: '1', vendor: 'Zenith' })),
+      buildQualityGrnQueueRow(baseGrn({ id: '2', vendor: 'Acme' })),
+    ];
+    expect(sortQualityGrnQueueRows(rows, 'vendor', 'asc').map((r) => r.id)).toEqual(['2', '1']);
+    expect(sortQualityGrnQueueRows(rows, 'vendor', 'desc').map((r) => r.id)).toEqual(['1', '2']);
   });
 });
