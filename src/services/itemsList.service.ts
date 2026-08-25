@@ -30,6 +30,7 @@ export interface ItemListTierRow {
   price_per_unit: number;
   valid_till?: string | null;
   note?: string | null;
+  source_ask_id?: number | null;
 }
 
 export interface ItemListVendorRateRow {
@@ -74,6 +75,8 @@ export interface CreateTierPayload {
   price_per_unit: number;
   valid_till?: string | null;
   note?: string | null;
+  /** planning_quotation_asks.id that produced this tier via Record Quote — lets reopening that ask clean up its pricing. */
+  source_ask_id?: number | null;
 }
 
 /** Page item: RM/PM/PR from masters with optional vendorRates (for Price Lists view). */

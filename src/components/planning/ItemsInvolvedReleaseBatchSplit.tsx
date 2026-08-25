@@ -161,6 +161,7 @@ export function ItemsInvolvedReleaseBatchSplit({
   onFillMoq,
   onClearPicks,
   onPickBatch,
+  onAddBatch,
   moqMin,
   siblingItemsByBatchKey = {},
 }: {
@@ -181,6 +182,12 @@ export function ItemsInvolvedReleaseBatchSplit({
   onClearPicks: () => void;
   /** Pick a single batch: fills the Planned line below with only this batch's qty + expected date. */
   onPickBatch: (key: string, requiredPick: number) => void;
+  /**
+   * + Add this batch's required qty into the picks above, growing the per-week release plan.
+   * Does NOT touch the Planned line details below — only Pick (on this row or on a week row)
+   * does that.
+   */
+  onAddBatch: (key: string, requiredPick: number) => void;
   /** Other Items Involved rows per batch key — shown when a batch row is expanded. */
   siblingItemsByBatchKey?: Record<string, ReleaseBatchSiblingItemRow[]>;
 }): React.ReactElement | null {
@@ -338,14 +345,9 @@ export function ItemsInvolvedReleaseBatchSplit({
                         </button>
                         <button
                           type="button"
-                          onClick={() =>
-                            onPickChange(
-                              row.key,
-                              row.requiredPick > 0 ? String(row.requiredPick) : ''
-                            )
-                          }
+                          onClick={() => onAddBatch(row.key, row.requiredPick)}
                           className="px-2 py-1 rounded border border-brand-soft text-brand text-[10px] font-semibold hover:bg-brand-soft whitespace-nowrap"
-                          title="Add this batch's required qty to the picks above (keeps other picks)"
+                          title="Add this batch's required qty to the week-wise release plan below (does not change Planned line details — Pick a week for that)"
                         >
                           + Add
                         </button>

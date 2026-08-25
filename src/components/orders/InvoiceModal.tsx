@@ -93,29 +93,39 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
       return;
     }
 
-    const subtotal = pickedSplits.reduce(
-      (acc, { item, split }) => acc + (split.pickedQty ?? 0) * (item.unitPrice ?? item.rate ?? 0), 0
-    );
-    const gstPercent = 18;
-    const totalValue = subtotal * (1 + gstPercent / 100);
+    // Tax is the individual per-line rate set on the sale order — never a flat/hardcoded GST% added
+    // here. Rate-based (not the SO's snapshot ₹ amount) so a partial-quantity invoice scales correctly.
+    const rate = (item: OrderItem) => item.unitPrice ?? item.rate ?? 0;
+    const lineRows = pickedSplits.map(({ item, split }) => {
+      const qty = split.pickedQty ?? 0;
+      const unitRate = rate(item);
+      const amount = qty * unitRate;
+      const taxPct = Number(item.taxPct) || 0;
+      const taxAmount = Math.round(amount * taxPct) / 100;
+      return { item, split, qty, unitRate, amount, taxPct, taxAmount };
+    });
+    const subtotal = lineRows.reduce((acc, r) => acc + r.amount, 0);
+    const gstAmount = lineRows.reduce((acc, r) => acc + r.taxAmount, 0);
+    const totalValue = subtotal + gstAmount;
+    // Blended effective % across lines — kept only for the invoice record's summary field; the
+    // actual charge is always the sum of each line's own individual tax above.
+    const gstPercent = subtotal > 0 ? Math.round((gstAmount / subtotal) * 10000) / 100 : 0;
 
     const selectedTransporter = transporters.find(t => t.name === transporter);
 
-    const rate = (item: OrderItem) => item.unitPrice ?? item.rate ?? 0;
-    const lineItems = pickedSplits.map(({ item, split }) => {
-      const qty = split.pickedQty ?? 0;
-      const unitRate = rate(item);
-      return {
-        productName: item.productName,
-        pack: item.pack,
-        bprNo: split.bprNo,
-        sku: item.sku,
-        quantity: qty,
-        pickedQty: qty,
-        rate: unitRate,
-        amount: qty * unitRate,
-      };
-    });
+    const lineItems = lineRows.map(({ item, split, qty, unitRate, amount, taxPct, taxAmount }) => ({
+      productName: item.productName,
+      pack: item.pack,
+      bprNo: split.bprNo,
+      sku: item.sku,
+      quantity: qty,
+      pickedQty: qty,
+      rate: unitRate,
+      amount,
+      taxPct,
+      taxAmount,
+      lineTotal: amount + taxAmount,
+    }));
 
     setSubmitting(true);
     setSubmitError(null);
@@ -199,9 +209,17 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
 
   if (!saleOrder) return null;
 
-  const totalInvoiceValue = pickedSplits.reduce(
-    (acc, { item, split }) => acc + (split.pickedQty ?? 0) * (item.unitPrice ?? item.rate ?? 0), 0
-  );
+  // Individual per-line tax (from the sale order) — never a hardcoded/flat GST% added here.
+  const invoiceRate = (item: OrderItem) => item.unitPrice ?? item.rate ?? 0;
+  const invoiceLineRows = pickedSplits.map(({ item, split }) => {
+    const qty = split.pickedQty ?? 0;
+    const amount = qty * invoiceRate(item);
+    const taxAmount = Math.round(amount * (Number(item.taxPct) || 0)) / 100;
+    return { item, split, qty, amount, taxAmount };
+  });
+  const invoiceSubtotal = invoiceLineRows.reduce((acc, r) => acc + r.amount, 0);
+  const invoiceTaxTotal = invoiceLineRows.reduce((acc, r) => acc + r.taxAmount, 0);
+  const totalInvoiceValue = invoiceSubtotal + invoiceTaxTotal;
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title={`Create Invoice for SO: ${saleOrder.soNo}`} size="xl">
@@ -260,26 +278,41 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                         <th scope="col" className="px-4 py-2 text-right font-semibold text-ink-3">Picked Qty</th>
                         <th scope="col" className="px-4 py-2 text-right font-semibold text-ink-3">Rate</th>
                         <th scope="col" className="px-4 py-2 text-right font-semibold text-ink-3">Amount</th>
+                        <th scope="col" className="px-4 py-2 text-right font-semibold text-ink-3">Tax</th>
+                        <th scope="col" className="px-4 py-2 text-right font-semibold text-ink-3">Line total</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {pickedSplits.map(({ item, split }, idx) => (
+                      {invoiceLineRows.map(({ item, split, qty, amount, taxAmount }, idx) => (
                         <tr key={idx}>
                           <td className="px-4 py-3">
                             <p className="font-medium text-ink">{item.productName}</p>
                             <p className="text-xs text-ink-3">{item.pack}</p>
                           </td>
                           <td className="px-4 py-3 font-mono text-brand">{split.bprNo}</td>
-                          <td className="px-4 py-3 text-right font-medium text-brand">{formatNumber(split.pickedQty ?? 0)}</td>
+                          <td className="px-4 py-3 text-right font-medium text-brand">{formatNumber(qty)}</td>
                           <td className="px-4 py-3 text-right text-ink-3">₹{formatNumber(item.unitPrice ?? item.rate)}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-ink">₹{formatNumber((split.pickedQty ?? 0) * (item.unitPrice ?? item.rate ?? 0))}</td>
+                          <td className="px-4 py-3 text-right text-ink-3">₹{formatNumber(amount)}</td>
+                          <td className="px-4 py-3 text-right text-ink-3">
+                            ₹{formatNumber(taxAmount)}
+                            {item.taxPct ? <span className="text-xs text-ink-4"> ({formatNumber(item.taxPct)}%)</span> : null}
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-ink">₹{formatNumber(amount + taxAmount)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot className="bg-surface-3 border-t-2">
                       <tr>
-                        <td colSpan={4} className="px-4 py-3 text-right font-bold text-ink">Total Invoice Value</td>
-                        <td className="px-4 py-3 text-right font-bold text-xl text-ink">₹{formatNumber(totalInvoiceValue)}</td>
+                        <td colSpan={5} className="px-4 py-3 text-right font-semibold text-ink-2">Subtotal</td>
+                        <td colSpan={2} className="px-4 py-3 text-right font-semibold text-ink-2">₹{formatNumber(invoiceSubtotal)}</td>
+                      </tr>
+                      <tr>
+                        <td colSpan={5} className="px-4 py-3 text-right font-semibold text-ink-2">Total tax (individual per-line)</td>
+                        <td colSpan={2} className="px-4 py-3 text-right font-semibold text-ink-2">₹{formatNumber(invoiceTaxTotal)}</td>
+                      </tr>
+                      <tr>
+                        <td colSpan={5} className="px-4 py-3 text-right font-bold text-ink">Total Invoice Value</td>
+                        <td colSpan={2} className="px-4 py-3 text-right font-bold text-xl text-ink">₹{formatNumber(totalInvoiceValue)}</td>
                       </tr>
                     </tfoot>
                   </table>

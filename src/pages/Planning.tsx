@@ -57,6 +57,8 @@ import {
 } from '../lib/planningBatchesNavigation';
 import { parseQtyLabel, parseQtyLabelInt } from '../lib/parseQtyLabel';
 import { buildPisMaterialScopes } from '../lib/pisMaterialCommentScopes';
+import MaterialMasterTypeahead from '../components/MaterialMasterTypeahead';
+import { buildMaterialTypeaheadOptions } from '../lib/materialTypeahead';
 import type { FFStatus } from '../types/orderFulfillment';
 import type { SoPlanningAvailabilityItem, SoPlanningAvailabilityResponse } from '../services/fulfillment.service';
 import { fetchSoPlanningAvailability, fetchFulfillmentOrders, fetchSalesOrdersDashboard } from '../services/fulfillment.service';
@@ -143,6 +145,7 @@ import {
   buildPlannedReleaseTargets,
   buildReleaseTargetsForSubmit,
   datesMatchForProcurementMerge,
+  isoWeekKeyFromDate,
   mergeWeekQtyOverrides,
   summarizePlannedReleaseTargetsByWeek,
 } from '../lib/plannedReleaseTargets';
@@ -2835,6 +2838,12 @@ const Planning = () => {
    */
   const [pisOrderScope, setPisOrderScope] = useState<{ id: number; label: string } | null>(null);
   /** RM/PM threads for the open PIs row, keyed by material id and shared with Items Involved. */
+  /** "Add RM/PM line" pickers in the BOM Editor — text typed, and the option chosen from the list. */
+  const [addBomRmText, setAddBomRmText] = useState('');
+  const [addBomRmKey, setAddBomRmKey] = useState('');
+  const [addBomPmText, setAddBomPmText] = useState('');
+  const [addBomPmKey, setAddBomPmKey] = useState('');
+
   const [pisMaterialScopes, setPisMaterialScopes] = useState<
     { type: 'rm' | 'pm'; id: number; label: string }[]
   >([]);
@@ -3100,6 +3109,16 @@ const Planning = () => {
   });
   const rawMaterialsList = useMemo(() => rawMaterialsData ?? [], [rawMaterialsData]);
   const packMaterialsList = useMemo(() => packMaterialsData ?? [], [packMaterialsData]);
+
+  const bomRmTypeaheadOptions = useMemo(
+    () => buildMaterialTypeaheadOptions(rawMaterialsList, []).filter((o) => o.kind === 'rm'),
+    [rawMaterialsList],
+  );
+  const bomPmTypeaheadOptions = useMemo(
+    () => buildMaterialTypeaheadOptions([], packMaterialsList as unknown as PackMaterialRecord[]).filter((o) => o.kind === 'pm'),
+    [packMaterialsList],
+  );
+
 
   const { data: vendorClientsData, isLoading: vendorClientsLoading } = useQuery({
     queryKey: ['vendor-clients', 'vendor', 'planning-release'],
@@ -9311,25 +9330,45 @@ const Planning = () => {
           }));
         };
         /**
-         * Fill THIS week's release qty from its own requirement, exactly as Pick does on a batch
-         * line. Other weeks are left untouched — an earlier version zeroed them to "release only
-         * this week", which silently discarded the other weeks' quantities (and dropped their rows
-         * from the summary entirely, since zero-qty weeks are not listed).
+         * Pick ONE week into the Planned line below: qty = that week's total, expected date =
+         * that week's required-by (already the last day of the ISO week — see
+         * summarizePlannedReleaseTargetsByWeek). Mirrors handleReleaseBatchPickOnly's
+         * "make this the sole selection" behavior, but for every batch pick landing in this
+         * week, so the Planned line's qty and resulting PR date both match this row exactly —
+         * other weeks are dropped from the current picks (add them back with + Add, or Pick
+         * the next week when you're ready to raise its PR).
          */
         const handlePickWeek = (weekKey: string) => {
           const target = releaseWeekSummary.find((row) => row.weekKey === weekKey);
           if (!target) return;
-          const nextOverrides: Record<string, string> = {
-            ...releaseWeekQtyOverrides,
-            [weekKey]: formatReleasePickQty(target.qty).replace(/,/g, ''),
-          };
-          setReleaseWeekQtyOverrides(nextOverrides);
-          const merged = mergeWeekQtyOverrides(releaseWeekSummary, nextOverrides);
-          const total = merged.reduce((sum, row) => sum + row.qty, 0);
-          setReleaseToPlanningForm((f) => ({
-            ...f,
-            qty: total > 0 ? formatReleasePickQty(total).replace(/,/g, '') : '',
-          }));
+          const keptEntries: Record<string, string> = {};
+          for (const row of releaseBatchRows) {
+            const qtyStr = releaseBatchPicks[row.key];
+            const qty = parseFloat(String(qtyStr ?? '').replace(/,/g, ''));
+            if (!(qty > 0)) continue;
+            const dateForRow =
+              String(releaseBatchExpectedDates[row.key] ?? '').trim().slice(0, 10) ||
+              releaseExpectedDateFromLeadDays(releaseToPlanningForm.leadTimeDays);
+            if (isoWeekKeyFromDate(dateForRow) === weekKey) {
+              keptEntries[row.key] = qtyStr;
+            }
+          }
+          setReleaseWeekQtyOverrides({});
+          if (Object.keys(keptEntries).length > 0) {
+            setReleaseBatchPicks(keptEntries);
+            setReleaseToPlanningForm((f) => ({
+              ...f,
+              qty: releaseBatchPicksToFormQtyStr(item, keptEntries),
+            }));
+          } else {
+            // No per-batch picks landed in this week (e.g. qty was typed as one flat total) —
+            // fall back to the week row's own qty + date directly.
+            setReleaseBatchPicks({});
+            setReleaseToPlanningForm((f) => ({
+              ...f,
+              qty: target.qty > 0 ? formatReleasePickQty(target.qty).replace(/,/g, '') : '',
+            }));
+          }
         };
         const resetReleaseWeekQtyOverrides = () => {
           setReleaseWeekQtyOverrides({});
@@ -9358,6 +9397,22 @@ const Planning = () => {
         };
         const handleReleaseBatchExpectedDateChange = (key: string, value: string) => {
           setReleaseBatchExpectedDates((prev) => ({ ...prev, [key]: value }));
+        };
+        // "+ Add" a batch's required qty into the picks: builds up the per-week release plan
+        // below only — it must NOT touch the Planned line details' Quantity/Expected date, since
+        // those are populated exclusively by Pick on a week row once the split across weeks looks
+        // right. (Typing directly into a batch's own qty input still updates the Planned line,
+        // via handleReleaseBatchPickChange above — only this "+ Add" shortcut is scoped to the
+        // week-wise summary.)
+        const handleReleaseBatchAddPick = (key: string, requiredPick: number) => {
+          const value = requiredPick > 0 ? String(requiredPick) : '';
+          if (requiredPick > 0) {
+            setReleaseBatchExpectedDates((prev) =>
+              seedReleaseBatchExpectedDates([key], releaseToPlanningForm.leadTimeDays, prev, releaseBatchDueByKey)
+            );
+          }
+          setReleaseWeekQtyOverrides({});
+          setReleaseBatchPicks((prev) => ({ ...prev, [key]: value }));
         };
         // "Pick" a single batch: make it the sole selection so the Planned line below
         // reflects only this batch's qty, and seed its own expected (required-by) date.
@@ -9512,6 +9567,7 @@ const Planning = () => {
                   onFillMoq={slabMoqModal > 0 ? fillReleaseQtyToMoq : undefined}
                   onClearPicks={clearReleaseBatchPicks}
                   onPickBatch={handleReleaseBatchPickOnly}
+                  onAddBatch={handleReleaseBatchAddPick}
                   siblingItemsByBatchKey={releaseBatchSiblingItemsByKey}
                 />
                 {!isQuotationOnlyModal ? (
@@ -11469,9 +11525,62 @@ const Planning = () => {
                       })}
                     </div>
                     {!bomFieldsReadOnly && (
-                      <button className="mt-4 text-sm font-semibold text-brand hover:text-brand flex items-center gap-2" onClick={() => setActiveBatchTab('swap-add')}>
-                        <span>↔</span>Swap RM in Swap panel
-                      </button>
+                      <div className="mt-4 space-y-2">
+                        {/* Add an RM the formula does not have yet. New lines start at 0% so the
+                            blend total is never silently changed by adding one — set the % after. */}
+                        <div className="flex flex-wrap items-end gap-2">
+                          <div className="min-w-[16rem] flex-1">
+                            <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">
+                              Add RM line
+                            </label>
+                            <MaterialMasterTypeahead
+                              options={bomRmTypeaheadOptions}
+                              value={addBomRmText}
+                              onValueChange={setAddBomRmText}
+                              selectedId={addBomRmKey}
+                              onSelect={(opt) => { setAddBomRmKey(opt.key); setAddBomRmText(opt.label); }}
+                              onClearSelection={() => setAddBomRmKey('')}
+                              placeholder="Search raw material by code or name…"
+                              requirePickFromList
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            disabled={!addBomRmKey}
+                            onClick={() => {
+                              const opt = bomRmTypeaheadOptions.find((o) => o.key === addBomRmKey);
+                              if (!opt) return;
+                              setBomFormula((prev) => [
+                                ...prev,
+                                {
+                                  id: opt.code || opt.id,
+                                  name: opt.name,
+                                  code: opt.code,
+                                  quantity: 0,
+                                  unit: opt.unit || 'KG',
+                                  percentage: 0,
+                                  raw_material_id: opt.rawMaterialId,
+                                  specificGravity: parseFloat(bomLevelSG) || undefined,
+                                },
+                              ]);
+                              setAddBomRmKey('');
+                              setAddBomRmText('');
+                            }}
+                            className="px-3 py-2 rounded-lg bg-ok text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            + Add RM
+                          </button>
+                          <button
+                            className="px-3 py-2 text-sm font-semibold text-brand hover:text-brand flex items-center gap-2"
+                            onClick={() => setActiveBatchTab('swap-add')}
+                          >
+                            <span>↔</span>Swap RM in Swap panel
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-ink-3">
+                          New RM lines start at 0% — set the percentage on the row, then Confirm BOM.
+                        </p>
+                      </div>
                     )}
                   </div>
                   <div>
@@ -11504,6 +11613,51 @@ const Planning = () => {
                         </div>
                       ))}
                     </div>
+                    {!bomFieldsReadOnly && (
+                      <div className="mt-4 flex flex-wrap items-end gap-2">
+                        <div className="min-w-[16rem] flex-1">
+                          <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">
+                            Add PM line
+                          </label>
+                          <MaterialMasterTypeahead
+                            options={bomPmTypeaheadOptions}
+                            value={addBomPmText}
+                            onValueChange={setAddBomPmText}
+                            selectedId={addBomPmKey}
+                            onSelect={(opt) => { setAddBomPmKey(opt.key); setAddBomPmText(opt.label); }}
+                            onClearSelection={() => setAddBomPmKey('')}
+                            placeholder="Search pack material by code or name…"
+                            requirePickFromList
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!addBomPmKey}
+                          onClick={() => {
+                            const opt = bomPmTypeaheadOptions.find((o) => o.key === addBomPmKey);
+                            if (!opt) return;
+                            // 1 per unit is the ordinary case for a pack material; edit on the row.
+                            setBomPackaging((prev) => [
+                              ...prev,
+                              {
+                                id: opt.code || opt.id,
+                                name: opt.name,
+                                code: opt.code,
+                                quantity: 0,
+                                unit: opt.unit || 'PCS',
+                                percentage: 0,
+                                value: 1,
+                              },
+                            ]);
+                            setAddBomPmKey('');
+                            setAddBomPmText('');
+                          }}
+                          className="px-3 py-2 rounded-lg bg-ok text-white text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          + Add PM
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-border">
                     {bomFieldsReadOnly ? (

@@ -154,7 +154,8 @@ describe('plannedReleaseTargets', () => {
     expect(summary).toHaveLength(1);
     expect(summary[0]?.qty).toBe(110);
     expect(summary[0]?.weekLabel).toBe('Week 24, 2026');
-    expect(summary[0]?.expectedDate).toBe('2026-06-10');
+    // Required-by is the LAST day of the week (Sunday), not the earliest per-batch due date.
+    expect(summary[0]?.expectedDate).toBe('2026-06-14');
   });
 
   it('mergeWeekQtyOverrides applies user edits per week', () => {

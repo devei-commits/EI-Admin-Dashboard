@@ -38,7 +38,17 @@ export type SoUpdatePayload = {
   notes: string;
   /** Authoritative sales_orders.status set via Edit SO → Update SO Status (drives PIS Extracted). */
   salesOrderStatus?: SalesOrderStatus;
-  items: Array<{ sku: string; productName: string; pack: string; orderedQty: number; unitPrice: number; mrp?: number | null }>;
+  items: Array<{
+    sku: string;
+    productName: string;
+    pack: string;
+    orderedQty: number;
+    unitPrice: number;
+    mrp?: number | null;
+    /** Individual per-line tax — % and ₹ amount, never a hardcoded platform default. */
+    taxPct?: number;
+    taxAmount?: number;
+  }>;
 };
 
 export interface SoActionModalsProps {

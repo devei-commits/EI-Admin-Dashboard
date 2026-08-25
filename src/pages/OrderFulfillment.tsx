@@ -118,6 +118,8 @@ export const OrderFulfillment: React.FC = () => {
           orderedQty: item.orderedQty,
           unitPrice: item.unitPrice,
           mrp: item.mrp ?? null,
+          taxPct: item.taxPct ?? 0,
+          taxAmount: item.taxAmount ?? 0,
           batchSplits: [{
             bmrNo: item.bmrNo || null,
             bprNo: null,
@@ -242,7 +244,16 @@ export const OrderFulfillment: React.FC = () => {
       paymentTerms: string;
       notes: string;
       salesOrderStatus?: string;
-      items: Array<{ sku: string; productName: string; pack: string; orderedQty: number; unitPrice: number; mrp?: number | null }>;
+      items: Array<{
+        sku: string;
+        productName: string;
+        pack: string;
+        orderedQty: number;
+        unitPrice: number;
+        mrp?: number | null;
+        taxPct?: number;
+        taxAmount?: number;
+      }>;
     }
   ): Promise<void> => {
     if (!id) return;

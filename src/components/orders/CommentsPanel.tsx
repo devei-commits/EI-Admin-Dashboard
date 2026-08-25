@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { X, MessageSquare, Send, Clock, ChevronRight, AlertCircle, CheckCircle2 } from 'lucide-react';
 import type { CommentFeedItem } from '../../types/orderFulfillment';
 import {
@@ -71,6 +72,14 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({
   entityType, entityId, entityLabel, onClose, itemScopes, orderScope, materialScopes,
 }) => {
   const { addToast } = useToast();
+  // The panel is rendered by the page, but navigating within the SPA can leave it mounted — it was
+  // still hanging over unrelated modules. Closing on the first route change after it opens keeps it
+  // tied to the screen it was opened from.
+  const location = useLocation();
+  const openedAtPathRef = useRef(location.pathname);
+  useEffect(() => {
+    if (location.pathname !== openedAtPathRef.current) onClose();
+  }, [location.pathname, onClose]);
   // Which thread is open: the order itself, or one of its lines. Starts on the order.
   const [scope, setScope] = useState<{ type: CommentEntityType; id: number; label: string }>({
     type: entityType, id: entityId, label: entityLabel,
@@ -89,6 +98,8 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({
   // Keyed "rm-<id>" / "pm-<id>": RM and PM ids are separate namespaces and would otherwise collide.
   const [materialCounts, setMaterialCounts] = useState<Record<string, number>>({});
   const materialScopesKey = (materialScopes ?? []).map((m) => `${m.type}-${m.id}`).join(',');
+  /** Filter for the material chips — a BOM with thirty materials is not scannable by eye. */
+  const [materialFilter, setMaterialFilter] = useState('');
   useEffect(() => {
     const rmIds = (materialScopes ?? []).filter((m) => m.type === 'rm').map((m) => m.id);
     const pmIds = (materialScopes ?? []).filter((m) => m.type === 'pm').map((m) => m.id);
@@ -189,8 +200,10 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({
         const hasAlternatives =
           (Boolean(orderTarget) && (itemScopes?.length ?? 0) > 0) || (materialScopes?.length ?? 0) > 0;
         if (!hasAlternatives) return null;
+        // Resizable: with thirty-odd material chips this section swallowed the feed, so it is
+        // capped and drag-resizable from its bottom edge (native CSS resize).
         return (
-        <div className="border-b border-border px-3 py-2">
+        <div className="border-b border-border px-3 py-2 max-h-[45vh] min-h-[3.5rem] overflow-y-auto resize-y">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-3 mb-1.5">Comment on</p>
           <div className="flex flex-wrap gap-1.5">
             <button
@@ -229,11 +242,28 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({
           </div>
           {materialScopes && materialScopes.length > 0 && (
             <>
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-3 mt-2 mb-1.5">
-                Material (shared with Items Involved)
-              </p>
+              <div className="mt-2 mb-1.5 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-3">
+                  Material (shared with Items Involved)
+                </p>
+                {materialScopes.length > 8 && (
+                  <input
+                    type="text"
+                    value={materialFilter}
+                    onChange={(e) => setMaterialFilter(e.target.value)}
+                    placeholder={`Filter ${materialScopes.length} materials…`}
+                    aria-label="Filter materials"
+                    className="w-40 rounded-md border border-border bg-surface px-2 py-1 text-[11px] text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                  />
+                )}
+              </div>
               <div className="flex flex-wrap gap-1.5">
                 {[...materialScopes]
+                  .filter((m) => {
+                    const q = materialFilter.trim().toLowerCase();
+                    if (!q) return true;
+                    return `${m.type} ${m.label}`.toLowerCase().includes(q);
+                  })
                   .sort((a, b) => {
                     // Materials with comments lead, so the ones worth reading are not buried in a
                     // list of thirty. Original order is preserved within each group.
@@ -274,6 +304,12 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({
                     </button>
                   );
                 })}
+                {materialFilter.trim() &&
+                  materialScopes.every(
+                    (m) => !`${m.type} ${m.label}`.toLowerCase().includes(materialFilter.trim().toLowerCase()),
+                  ) && (
+                    <p className="text-[11px] text-ink-3 py-1">No material matches “{materialFilter.trim()}”.</p>
+                  )}
               </div>
             </>
           )}

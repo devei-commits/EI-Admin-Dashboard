@@ -1,4 +1,4 @@
-import { formatIsoWeekLabel, isoWeekFromDateString } from './isoWeek';
+import { formatIsoWeekLabel, isoWeekFromDateString, lastDateOfIsoWeek } from './isoWeek';
 
 export type PlannedReleaseTarget = {
   qty: number;
@@ -130,7 +130,12 @@ export type PlannedReleaseWeekSummary = {
   requestCount: number;
 };
 
-/** Roll up release targets by ISO week for UI preview (qty + earliest required-by in week). */
+/**
+ * Roll up release targets by ISO week for UI preview (qty summed per week). The bucket's
+ * required-by date is always the LAST day (Sunday) of that ISO week — not the earliest
+ * per-batch due date — since a week-level PR/PO ships by week end regardless of which day
+ * within the week an individual batch was originally due.
+ */
 export function summarizePlannedReleaseTargetsByWeek(
   targets: PlannedReleaseTarget[]
 ): PlannedReleaseWeekSummary[] {
@@ -141,15 +146,17 @@ export function summarizePlannedReleaseTargetsByWeek(
 
   for (const target of targets) {
     if (!(target.qty > 0)) continue;
-    const expectedDate = String(target.expectedDate ?? '').trim().slice(0, 10);
-    if (!expectedDate) continue;
-    const weekKey = isoWeekKeyFromDate(expectedDate) ?? `date:${expectedDate}`;
-    const weekLabel = formatIsoWeekLabel(isoWeekFromDateString(expectedDate));
+    const rawDate = String(target.expectedDate ?? '').trim().slice(0, 10);
+    if (!rawDate) continue;
+    const parts = isoWeekFromDateString(rawDate);
+    const weekKey = parts ? `${parts.year}-${String(parts.week).padStart(2, '0')}` : `date:${rawDate}`;
+    const weekLabel = formatIsoWeekLabel(parts);
+    const bucketExpectedDate = parts ? lastDateOfIsoWeek(parts.year, parts.week) : rawDate;
     const bucket = byWeek.get(weekKey);
     if (!bucket) {
       byWeek.set(weekKey, {
         qty: target.qty,
-        expectedDate,
+        expectedDate: bucketExpectedDate,
         requestCount: 1,
         weekLabel,
       });
@@ -157,9 +164,6 @@ export function summarizePlannedReleaseTargetsByWeek(
     }
     bucket.qty += target.qty;
     bucket.requestCount += 1;
-    if (expectedDate < bucket.expectedDate) {
-      bucket.expectedDate = expectedDate;
-    }
   }
 
   return Array.from(byWeek.entries())

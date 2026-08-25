@@ -12,7 +12,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   subtitle?: string;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   children: React.ReactNode;
   footer?: React.ReactNode;
   /** Override scroll/overflow on the body panel (e.g. overflow-visible for nested dropdowns). */
@@ -35,7 +35,10 @@ export const Modal: React.FC<ModalProps> = ({
     sm: 'max-w-[560px]',
     md: 'max-w-[760px]',
     lg: 'max-w-[980px]',
-    xl: 'max-w-[1260px]'
+    xl: 'max-w-[1260px]',
+    // Wide data tables (e.g. Edit SO's order items grid) need more room than xl gives — capped by
+    // viewport so it never overflows on smaller screens.
+    '2xl': 'max-w-[min(1560px,95vw)]',
   };
 
   return (

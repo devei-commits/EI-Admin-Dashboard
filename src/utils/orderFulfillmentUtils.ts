@@ -241,9 +241,10 @@ export const calculateSOProgress = (saleOrder: SaleOrder): SOProgress => {
   };
 };
 
+/** Final payable order value: line subtotals + each line's own tax amount. Never adds a flat/hardcoded GST%. */
 export const calculateOrderValue = (saleOrder: SaleOrder): number => {
   return saleOrder.items.reduce((sum, item) => {
-    return sum + (item.orderedQty * item.unitPrice);
+    return sum + (item.orderedQty * item.unitPrice) + (Number(item.taxAmount) || 0);
   }, 0);
 };
 
@@ -254,7 +255,8 @@ export const calculateInvoiceSubtotal = (splits: Array<{ split: BatchSplit; item
   }, 0);
 };
 
-export const calculateGST = (subtotal: number, rate: number = 0.18): number => {
+/** Caller must always pass the real rate for that line/order — no hardcoded default GST%. */
+export const calculateGST = (subtotal: number, rate: number): number => {
   return Math.round(subtotal * rate);
 };
 

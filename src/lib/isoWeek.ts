@@ -32,6 +32,20 @@ export function isoWeekFromDateString(raw: string | null | undefined): IsoWeekPa
   return getIsoWeekAndYear(d);
 }
 
+/** Local YYYY-MM-DD for the last day (Sunday) of the given ISO week/year. */
+export function lastDateOfIsoWeek(year: number, week: number): string {
+  const jan4 = new Date(year, 0, 4, 12, 0, 0, 0);
+  const jan4Day = jan4.getDay() || 7;
+  const week1Monday = new Date(jan4);
+  week1Monday.setDate(jan4.getDate() - (jan4Day - 1));
+  const targetSunday = new Date(week1Monday);
+  targetSunday.setDate(week1Monday.getDate() + (week - 1) * 7 + 6);
+  const y = targetSunday.getFullYear();
+  const m = String(targetSunday.getMonth() + 1).padStart(2, '0');
+  const d = String(targetSunday.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export function formatIsoWeekLabel(parts: IsoWeekParts | null): string {
   if (!parts || !(parts.week > 0)) return '—';
   return `Week ${parts.week}, ${parts.year}`;

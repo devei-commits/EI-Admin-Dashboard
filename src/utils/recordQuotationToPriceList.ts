@@ -117,6 +117,8 @@ export async function recordQuotationToPriceList(
           price_per_unit: band.price,
           valid_till: quote.validTill,
           note: quote.note,
+          // Whichever ask most recently (re)recorded this band now owns it for reopen-cleanup.
+          source_ask_id: askId ?? null,
         });
         if (!upd.success) throw new Error(upd.error?.message ?? 'Failed to update price band');
       } else {
@@ -126,6 +128,7 @@ export async function recordQuotationToPriceList(
           price_per_unit: band.price,
           valid_till: quote.validTill,
           note: quote.note,
+          source_ask_id: askId ?? null,
         });
         if (!tierRes.success) throw new Error(tierRes.error?.message ?? 'Failed to save price band');
       }

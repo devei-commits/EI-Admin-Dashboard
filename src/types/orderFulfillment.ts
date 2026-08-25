@@ -103,6 +103,10 @@ export interface OrderItem {
   rate: number;
   unitPrice: number;
   mrp?: number | null;
+  /** Per-line tax rate (%), entered on the SO — never a hardcoded platform default. */
+  taxPct?: number;
+  /** Per-line tax amount (₹) for orderedQty × unitPrice, kept in sync with taxPct in the UI. */
+  taxAmount?: number;
   batchSplits: BatchSplit[];
   /** Matching planning_extracted.id for this SO+product line — used for item-specific comments shared with Planning's PIs Extracted view. Null until the SO is planned or no match is found. */
   planningExtractedId?: number | null;
@@ -301,6 +305,10 @@ export interface NewSOItemData {
   orderedQty: number;
   unitPrice: number;
   mrp?: number | null;
+  /** Per-line tax rate (%), entered on the SO — never a hardcoded platform default. */
+  taxPct?: number;
+  /** Per-line tax amount (₹) for orderedQty × unitPrice, kept in sync with taxPct in the UI. */
+  taxAmount?: number;
   bmrNo: string;
 }
 

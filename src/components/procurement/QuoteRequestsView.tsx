@@ -3,9 +3,9 @@
  * Planning-originated RFQs and Procurement-initiated quote requests in one inbox.
  */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, RefreshCw, MessageSquare, Loader2, FileText, Pencil, Plus, Download } from 'lucide-react';
+import { Search, RefreshCw, MessageSquare, Loader2, FileText, Pencil, Plus, Download, RotateCcw } from 'lucide-react';
 import { ChatCircle, Flag, ClipboardText } from '@phosphor-icons/react';
-import { fetchPlanningQuotationAsks, type PlanningQuotationAsk } from '../../services/planningQuotationAsks.service';
+import { fetchPlanningQuotationAsks, updatePlanningQuotationAsk, type PlanningQuotationAsk } from '../../services/planningQuotationAsks.service';
 import type { VendorQuote } from '../../types/procurement.types';
 import {
   QUOTE_STATUS_CONFIG, PR_SOURCE_CONFIG, SLA_DEFAULTS, SLA_LEVEL_CLASSES, SLA_LEVEL_PREFIX,
@@ -20,6 +20,7 @@ import { RequestQuotationModal, type RequestQuotationContext } from './RequestQu
 import RecordDetailModal, { type DetailSection } from '../ui/RecordDetailModal';
 import { recordQuotationToPriceList } from '../../utils/recordQuotationToPriceList';
 import type { VendorClientRecord } from '../../services/vendorClient.service';
+import { useToast } from '../../context/ToastContext';
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '—';
@@ -100,12 +101,16 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
   onExport,
   onQuoteRecorded,
 }) => {
+  const { addToast } = useToast();
   const [asks, setAsks] = useState<PlanningQuotationAsk[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | QuoteStatus>('all');
   const [sourceFilter, setSourceFilter] = useState<'all' | PrSource>('all');
+  // Active = still awaiting a vendor quote; Completed = quote recorded or request cancelled.
+  const [tab, setTab] = useState<'active' | 'completed'>('active');
+  const [reopeningId, setReopeningId] = useState<number | null>(null);
   // Record a vendor quotation (MOQ bands) → Approve & Save writes straight to the Items List price list.
   const [recordingFor, setRecordingFor] = useState<RfqTemplateData | null>(null);
   const [requestOpen, setRequestOpen] = useState(false);
@@ -123,13 +128,33 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const res = await fetchPlanningQuotationAsks();
+      // Fetch every status, not just the backend's pending-only default — otherwise recorded/cancelled
+      // requests vanish from this view the moment they're completed, with no way to see or reopen them.
+      const res = await fetchPlanningQuotationAsks({ status: 'all' });
       if (res.success) setAsks(res.data ?? []);
       else setError('Failed to load quote requests');
     } catch (e) { setError('Failed to load quote requests'); console.error(e); }
     finally { setLoading(false); }
   }, []);
   useEffect(() => { void load(); }, [load]);
+
+  const reopenAsk = useCallback(async (ask: PlanningQuotationAsk) => {
+    setReopeningId(ask.id);
+    try {
+      const res = await updatePlanningQuotationAsk(ask.id, { status: 'pending' });
+      if (res.success) {
+        addToast('success', 'Quote request reopened — its recorded price-list entry was cleared, so you can edit and re-record a fresh quote.');
+        setTab('active');
+        await load();
+      } else {
+        addToast('error', typeof res.error === 'string' ? res.error : 'Failed to reopen quote request');
+      }
+    } catch (e) {
+      addToast('error', e instanceof Error ? e.message : 'Failed to reopen quote request');
+    } finally {
+      setReopeningId(null);
+    }
+  }, [addToast, load]);
 
   const rows = useMemo((): QuoteRow[] => {
     const planningRows: QuoteRow[] = asks.map((a) => {
@@ -208,6 +233,9 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
 
     const q = search.trim().toLowerCase();
     const merged = [...planningRows, ...procRows].filter((r) => {
+      const isCompletedStatus = r.status === 'completed' || r.status === 'terminated';
+      if (tab === 'active' && isCompletedStatus) return false;
+      if (tab === 'completed' && !isCompletedStatus) return false;
       if (statusFilter !== 'all' && r.status !== statusFilter) return false;
       if (sourceFilter !== 'all' && r.source !== sourceFilter) return false;
       if (q && !`${r.qtId} ${r.itemName} ${r.itemCode} ${r.vendors}`.toLowerCase().includes(q)) return false;
@@ -233,11 +261,18 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
       return d * dirMul;
     });
     return merged;
-  }, [asks, vendorQuotes, search, statusFilter, sourceFilter, sortBy, sortDir]);
+  }, [asks, vendorQuotes, search, statusFilter, sourceFilter, sortBy, sortDir, tab]);
 
   const awaiting = rows.filter((r) => r.status === 'requested').length;
   const breached = rows.filter((r) => r.status === 'requested' && quoteSlaLevel(r.daysOpen) === 'bad').length;
   const fromPlanning = rows.filter((r) => r.source === 'planning').length;
+  const completedCount = useMemo(() => {
+    const statuses = [
+      ...asks.map((a) => mapPlanningStatus(a.status)),
+      ...vendorQuotes.filter((q) => !String(q.id).startsWith('IL-')).map((q) => mapVendorQuoteStatus(q.status)),
+    ];
+    return statuses.filter((s) => s === 'completed' || s === 'terminated').length;
+  }, [asks, vendorQuotes]);
 
   return (
     <div className="space-y-3">
@@ -245,9 +280,9 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
         icon={<ChatCircle className="w-4 h-4 shrink-0" />}
         title="Quote Requests"
         stats={[
-          { value: rows.length, label: 'active' },
-          { value: awaiting, label: 'awaiting response', tone: 'brand' },
-          { value: breached, label: 'SLA-breached', tone: 'err', hidden: breached === 0 },
+          { value: rows.length, label: tab === 'active' ? 'active' : 'completed' },
+          { value: awaiting, label: 'awaiting response', tone: 'brand', hidden: tab !== 'active' },
+          { value: breached, label: 'SLA-breached', tone: 'err', hidden: tab !== 'active' || breached === 0 },
           { value: fromPlanning, label: 'from Planning' },
         ]}
         actions={
@@ -267,6 +302,20 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
         }
       />
 
+      <div className="flex items-center gap-1 border-b border-border">
+        {(['active', 'completed'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => { setTab(t); setStatusFilter('all'); }}
+            className={`px-3 py-1.5 text-xs font-semibold border-b-2 -mb-px transition-colors ${
+              tab === t ? 'border-brand text-brand' : 'border-transparent text-ink-3 hover:text-ink-2'
+            }`}
+          >
+            {t === 'active' ? 'Active Requests' : `Completed Quotes${completedCount > 0 ? ` (${completedCount})` : ''}`}
+          </button>
+        ))}
+      </div>
+
       <ProcFilterBar stack>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[10px] font-bold text-ink-4 uppercase">Source</span>
@@ -280,9 +329,11 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
           <ProcSearch value={search} onChange={setSearch} placeholder="Search QT ID, item, vendor…" />
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} aria-label="Filter by status" className={procSelectClass}>
             <option value="all">All Statuses</option>
-            {(Object.keys(QUOTE_STATUS_CONFIG) as QuoteStatus[]).map((s) => (
-              <option key={s} value={s}>{QUOTE_STATUS_CONFIG[s].label}</option>
-            ))}
+            {(Object.keys(QUOTE_STATUS_CONFIG) as QuoteStatus[])
+              .filter((s) => (tab === 'active' ? s !== 'completed' && s !== 'terminated' : s === 'completed' || s === 'terminated'))
+              .map((s) => (
+                <option key={s} value={s}>{QUOTE_STATUS_CONFIG[s].label}</option>
+              ))}
           </select>
         </div>
       </ProcFilterBar>
@@ -334,11 +385,14 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
                     <td className="px-3 py-2.5">
                       <div className="flex gap-1">
                         {(() => {
-                          const canRecord = r.status !== 'completed' && r.status !== 'terminated';
+                          const isDone = r.status === 'completed' || r.status === 'terminated';
+                          const canRecord = !isDone;
                           const showEdit = linkedQuote && onEditQuote;
                           // RFQ rows (planning_quotation_asks) are edited in the RequestQuotationModal while still pending.
                           const canEditRfq = !!r.ask && r.status === 'requested';
-                          if (!canRecord && !showEdit && !canEditRfq) {
+                          // Reopen puts a completed/cancelled RFQ ask back to pending so it can be edited and re-recorded.
+                          const canReopen = !!r.ask && isDone;
+                          if (!canRecord && !showEdit && !canEditRfq && !canReopen) {
                             return <span className="text-xs text-ink-4">—</span>;
                           }
                           return (
@@ -356,6 +410,16 @@ export const QuoteRequestsView: React.FC<QuoteRequestsViewProps> = ({
                               {canRecord && (
                                 <button onClick={(e) => { e.stopPropagation(); setRecordingFor(r.templateData); }} title="Record a vendor quotation" className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-brand-soft text-brand bg-brand-soft hover:bg-brand-soft-2 text-[10.5px] font-semibold">
                                   <FileText size={12} /> Record Quote
+                                </button>
+                              )}
+                              {canReopen && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); void reopenAsk(r.ask!); }}
+                                  disabled={reopeningId === r.ask!.id}
+                                  title="Reopen this quote request — clears its recorded price-list entry so you can edit and re-record it"
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2 text-[10.5px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                  {reopeningId === r.ask!.id ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />} Reopen
                                 </button>
                               )}
                             </>

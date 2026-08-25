@@ -93,6 +93,9 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     bmrNo: '',
     /** Set once the user types a price here, so the price-list resolver stops overwriting it. */
     priceManual: false,
+    /** Individual per-line tax — % and ₹ amount, kept in sync with each other (never a platform default). */
+    taxPct: 0,
+    taxAmount: 0,
   }]);
 
   const [errors, setErrors] = useState<string[]>([]);
@@ -339,7 +342,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
   };
 
   const handleAddItem = () => {
-    setItems([...items, { sku: '', productName: '', pack: '', orderedQty: 0, unitPrice: 0, mrp: 0, bmrNo: '', priceManual: false }]);
+    setItems([...items, { sku: '', productName: '', pack: '', orderedQty: 0, unitPrice: 0, mrp: 0, bmrNo: '', priceManual: false, taxPct: 0, taxAmount: 0 }]);
   };
 
   const handleItemChange = (index: number, field: string, value: any) => {
@@ -351,9 +354,17 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
       newItems[index].priceManual = true;
     }
 
+    // Qty / price changed — the tax % is the anchor, so re-derive the ₹ amount from it and the new base.
+    if (field === 'orderedQty' || field === 'unitPrice') {
+      const base = (newItems[index].orderedQty || 0) * (newItems[index].unitPrice || 0);
+      newItems[index].taxAmount = Math.round(base * (newItems[index].taxPct || 0)) / 100;
+    }
+
     if (field === 'productName') {
       // Different product — the previously typed price no longer applies, so let the resolver own it.
       newItems[index].priceManual = false;
+      newItems[index].taxPct = 0;
+      newItems[index].taxAmount = 0;
       const selected = productsByName.get(value);
       if (selected) {
         newItems[index].sku = selected.sku;
@@ -373,6 +384,32 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     }
     setItems(newItems);
   };
+
+  /** Line subtotal (qty × unit price), before tax. */
+  const lineBase = (item: (typeof items)[number]) => (item.orderedQty || 0) * (item.unitPrice || 0);
+
+  /** User edited the % field — recompute the ₹ amount from it (% is the anchor). */
+  const handleTaxPctChange = (index: number, pctStr: string) => {
+    const pct = Math.max(0, Number(pctStr) || 0);
+    const newItems = [...items];
+    const base = lineBase(newItems[index]);
+    newItems[index] = { ...newItems[index], taxPct: pct, taxAmount: Math.round(base * pct) / 100 };
+    setItems(newItems);
+  };
+
+  /** User edited the ₹ amount field directly — back-derive the effective % from it. */
+  const handleTaxAmountChange = (index: number, amtStr: string) => {
+    const amt = Math.max(0, Number(amtStr) || 0);
+    const newItems = [...items];
+    const base = lineBase(newItems[index]);
+    const pct = base > 0 ? Math.round((amt / base) * 10000) / 100 : 0;
+    newItems[index] = { ...newItems[index], taxAmount: amt, taxPct: pct };
+    setItems(newItems);
+  };
+
+  const itemsSubtotal = items.reduce((sum, it) => sum + lineBase(it), 0);
+  const itemsTaxTotal = items.reduce((sum, it) => sum + (Number(it.taxAmount) || 0), 0);
+  const itemsGrandTotal = itemsSubtotal + itemsTaxTotal;
 
   const handleRemoveItem = (index: number) => {
     const newItems = items.filter((_, i) => i !== index);
@@ -467,6 +504,8 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
         ...it,
         pack: String(it.pack ?? '').trim(),
         mrp: it.mrp > 0 ? it.mrp : null,
+        taxPct: Number(it.taxPct) || 0,
+        taxAmount: Number(it.taxAmount) || 0,
       })),
     };
 
@@ -495,7 +534,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     setCustomerCreditLimit('');
     applyStagedPaymentFields(DEFAULT_STAGED);
     setNotes('');
-    setItems([{ sku: '', productName: '', pack: '', orderedQty: 0, unitPrice: 0, mrp: 0, bmrNo: '', priceManual: false }]);
+    setItems([{ sku: '', productName: '', pack: '', orderedQty: 0, unitPrice: 0, mrp: 0, bmrNo: '', priceManual: false, taxPct: 0, taxAmount: 0 }]);
     setSelectedCustomerId(null);
     setPriceHints({});
     setErrors([]);
@@ -609,7 +648,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
       : null;
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Create New Sale Order" size="lg">
+    <Modal isOpen={isOpen} onClose={handleClose} title="Create New Sale Order" size="xl">
       <div className="p-6 max-h-[85vh] overflow-y-auto">
         {loadingData ? (
           <CardSkeleton />
@@ -741,9 +780,11 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                   const packFromPr = packSizeFromProductRecord(selectedProduct);
 
                   return (
-                  <div key={index} className="grid grid-cols-12 gap-x-4 gap-y-2 p-4 border rounded-lg bg-surface-3 relative">
-                    <div className="col-span-12 md:col-span-3 space-y-2">
+                  <div key={index} className="grid grid-cols-12 gap-x-4 gap-y-2 p-4 border border-border rounded-lg bg-surface-3 relative transition-colors hover:border-brand/40 focus-within:border-brand/50">
+                    {/* Product gets its own full-width row so long names are never clipped by the numeric fields below. */}
+                    <div className="col-span-12 space-y-2">
                       <label className="block text-sm font-semibold text-ink-2 uppercase tracking-wide">
+                        <span className="inline-flex h-5 w-5 mr-1.5 items-center justify-center rounded-full bg-surface-2 text-[10px] font-semibold tabular-nums text-ink-3 align-middle">{index + 1}</span>
                         Product<span className="text-err ml-0.5">*</span>
                       </label>
                       <input
@@ -809,6 +850,38 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                       />
                       <p className="text-xs text-ink-4 mt-1">From product master — editable</p>
                     </div>
+                    <div className="col-span-6 md:col-span-2">
+                      <Input
+                        label="Tax %"
+                        type="number"
+                        min={0}
+                        max={100}
+                        step="0.01"
+                        placeholder="5%"
+                        className="bg-surface-2/60"
+                        value={item.taxPct}
+                        onChange={(e) => handleTaxPctChange(index, e.target.value)}
+                      />
+                    </div>
+                    <div className="col-span-6 md:col-span-2">
+                      <Input
+                        label="Tax amount (₹)"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        placeholder="₹90"
+                        className="bg-surface-2/60"
+                        value={item.taxAmount}
+                        onChange={(e) => handleTaxAmountChange(index, e.target.value)}
+                      />
+                      <p className="text-xs text-ink-4 mt-1">Individual per-line tax — % and ₹ stay in sync</p>
+                    </div>
+                    <div className="col-span-6 md:col-span-2">
+                      <label className="block text-sm font-semibold text-ink-2 mb-2 uppercase tracking-wide">Line total (₹)</label>
+                      <div className="h-[46px] border border-brand-soft rounded-lg px-3 flex items-center text-sm font-bold text-brand bg-brand-soft/60 tabular-nums">
+                        ₹{(lineBase(item) + (Number(item.taxAmount) || 0)).toLocaleString('en-IN')}
+                      </div>
+                    </div>
                     <div className="col-span-12 md:col-span-1">
                       {items.length > 1 && (
                         <Button variant="ghost" size="sm" aria-label="Remove item" className="absolute top-4 right-4" onClick={() => handleRemoveItem(index)}>
@@ -822,6 +895,20 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                 <Button onClick={handleAddItem} className="w-full">
                   <Plus className="mr-2 h-4 w-4" /> Add Another Item
                 </Button>
+                <div className="rounded-lg border border-border bg-surface-3 p-4 grid grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-xs font-semibold text-ink-3 uppercase tracking-wide">Subtotal</p>
+                    <p className="text-lg font-semibold text-ink">₹{itemsSubtotal.toLocaleString('en-IN')}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-ink-3 uppercase tracking-wide">Total tax</p>
+                    <p className="text-lg font-semibold text-ink">₹{itemsTaxTotal.toLocaleString('en-IN')}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-ink-3 uppercase tracking-wide">Grand total</p>
+                    <p className="text-lg font-bold text-brand">₹{itemsGrandTotal.toLocaleString('en-IN')}</p>
+                  </div>
+                </div>
               </div>
             </form>
           </>

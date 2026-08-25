@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import { X, Lock, Plus, Minus } from 'lucide-react';
 import type { PlanningBatchAllRow } from '../../services/planningExtracted.service';
 import {
@@ -74,7 +74,7 @@ function SortTh({
   sortDir: 'asc' | 'desc';
   onSort: (c: PanelSortKey) => void;
   align?: 'left' | 'right' | 'center';
-}): React.ReactElement {
+}): ReactElement {
   const active = sortKey === col;
   const justify = align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start';
   return (
@@ -128,14 +128,14 @@ export function PlanBatchItemsPanelModal({
   batchSentToProduction = false,
 }: PlanBatchItemsPanelModalProps): ReactElement {
   const sizeKg = Number(batch.sizeKg) || 0;
-  const [sortKey, setSortKey] = React.useState<PanelSortKey | null>(null);
-  const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('asc');
+  const [sortKey, setSortKey] = useState<PanelSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   /** Clicking the active column flips direction; a new column starts ascending. */
   const handleSort = (col: PanelSortKey) => {
     setSortDir((prev) => (sortKey === col ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'));
     setSortKey(col);
   };
-  const sortedRows = React.useMemo(() => {
+  const sortedRows = useMemo(() => {
     if (!sortKey) return rows;
     return [...rows].sort((a, b) => {
       const av = panelSortValue(a, sortKey);

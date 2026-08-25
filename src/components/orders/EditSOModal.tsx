@@ -27,6 +27,9 @@ interface EditableItem {
   orderedQty: number;
   unitPrice: number;
   mrp?: number | null;
+  /** Individual per-line tax — % and ₹ amount, kept in sync with each other (never a platform default). */
+  taxPct: number;
+  taxAmount: number;
 }
 
 interface EditSOModalProps {
@@ -46,7 +49,7 @@ interface EditSOModalProps {
     paymentTerms: string;
     notes: string;
     salesOrderStatus?: SalesOrderStatus;
-    items: Array<EditableItem & { mrp?: number | null }>;
+    items: Array<EditableItem & { mrp?: number | null; taxPct?: number; taxAmount?: number }>;
   }) => Promise<void> | void;
 }
 
@@ -58,6 +61,12 @@ const SUGGEST_ITEM_CLASS =
   'flex w-full flex-col gap-0.5 px-4 py-2.5 text-left transition-colors hover:bg-surface-3 focus:bg-surface-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] border-b border-hairline last:border-0';
 const SUGGEST_ITEM_PRIMARY_CLASS = 'text-sm font-medium text-ink';
 const SUGGEST_ITEM_META_CLASS = 'text-xs text-ink-3';
+
+// Order items grid — Product gets the only `fr` track so it absorbs the modal's extra width and
+// never truncates long names; every other column is a fixed px width. Header row and item rows
+// share this exact template so columns stay aligned.
+const ITEM_ROW_GRID_COLS =
+  'grid grid-cols-[2.25rem_minmax(260px,3fr)_120px_70px_100px_120px_100px_90px_110px_130px_70px] gap-2';
 
 function parseProductIdFromOption(product: ProductOption): number | null {
   const m = /^PR-(\d+)$/i.exec(String(product.id || '').trim());
@@ -80,6 +89,8 @@ function toEditableItems(order: SaleOrder | null): EditableItem[] {
     orderedQty: Number(item.orderedQty || 0),
     unitPrice: Number(item.unitPrice || 0),
     mrp: item.mrp ?? null,
+    taxPct: Number(item.taxPct || 0),
+    taxAmount: Number(item.taxAmount || 0),
   }));
 }
 
@@ -264,10 +275,16 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
     [items, products]
   );
 
-  const totalValue = useMemo(
+  const subtotalValue = useMemo(
     () => items.reduce((sum, it) => sum + Number(it.orderedQty || 0) * Number(it.unitPrice || 0), 0),
     [items]
   );
+  const taxTotalValue = useMemo(
+    () => items.reduce((sum, it) => sum + (Number(it.taxAmount) || 0), 0),
+    [items]
+  );
+  // Final payable total: line subtotals + each line's own individual tax. No hardcoded/flat GST added.
+  const totalValue = subtotalValue + taxTotalValue;
 
   const resolveLinePrice = useCallback(
     async (index: number, snapshot: EditableItem[], clientId: number) => {
@@ -327,6 +344,9 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
             pack: packSizeFromProductRecord(selected),
             unitPrice: selectedCustomerId ? 0 : Number(selected.price || 0),
             mrp: selected.price > 0 ? Number(selected.price) : null,
+            // Different product — the previously entered tax no longer applies.
+            taxPct: 0,
+            taxAmount: 0,
           };
         } else {
           next[index] = {
@@ -335,9 +355,41 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
             pack: '',
             unitPrice: 0,
             mrp: null,
+            taxPct: 0,
+            taxAmount: 0,
           };
         }
+      } else if (patch.orderedQty !== undefined || patch.unitPrice !== undefined) {
+        // Qty / price changed — tax % is the anchor, so re-derive the ₹ amount from it and the new base.
+        const base = Number(next[index].orderedQty || 0) * Number(next[index].unitPrice || 0);
+        next[index] = { ...next[index], taxAmount: Math.round(base * (next[index].taxPct || 0)) / 100 };
       }
+      return next;
+    });
+  };
+
+  /** Line subtotal (qty × unit price), before tax. */
+  const lineBase = (item: EditableItem) => Number(item.orderedQty || 0) * Number(item.unitPrice || 0);
+
+  /** User edited the % field — recompute the ₹ amount from it (% is the anchor). */
+  const handleTaxPctChange = (index: number, pctStr: string) => {
+    const pct = Math.max(0, Number(pctStr) || 0);
+    setItems((prev) => {
+      const next = [...prev];
+      const base = lineBase(next[index]);
+      next[index] = { ...next[index], taxPct: pct, taxAmount: Math.round(base * pct) / 100 };
+      return next;
+    });
+  };
+
+  /** User edited the ₹ amount field directly — back-derive the effective % from it. */
+  const handleTaxAmountChange = (index: number, amtStr: string) => {
+    const amt = Math.max(0, Number(amtStr) || 0);
+    setItems((prev) => {
+      const next = [...prev];
+      const base = lineBase(next[index]);
+      const pct = base > 0 ? Math.round((amt / base) * 10000) / 100 : 0;
+      next[index] = { ...next[index], taxAmount: amt, taxPct: pct };
       return next;
     });
   };
@@ -345,7 +397,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
   const addItem = () => {
     setItems((prev) => [
       ...prev,
-      { sku: '', productName: '', pack: '', orderedQty: 1, unitPrice: 0, mrp: null },
+      { sku: '', productName: '', pack: '', orderedQty: 1, unitPrice: 0, mrp: null, taxPct: 0, taxAmount: 0 },
     ]);
   };
 
@@ -441,6 +493,8 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
         orderedQty: Number(item.orderedQty || 0),
         unitPrice: Number(item.unitPrice || 0),
         mrp: item.mrp ?? null,
+        taxPct: Number(item.taxPct || 0),
+        taxAmount: Number(item.taxAmount || 0),
       })),
     });
   };
@@ -507,7 +561,7 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
           onClose();
         }}
         title={`Edit Sale Order — ${saleOrder.soNo}`}
-        size="xl"
+        size="2xl"
         footer={
           <>
             <button
@@ -604,8 +658,11 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
           </div>
           <div className="md:col-span-1">
             <label className="block text-xs font-semibold text-ink-3 mb-1">Total value</label>
-            <div className="h-[38px] border border-border rounded-lg px-3 flex items-center text-sm font-semibold text-ink-2 bg-surface-3">
-              {totalValue.toLocaleString('en-IN')}
+            <div className="h-[38px] border border-border rounded-lg px-3 flex flex-col justify-center leading-tight bg-surface-3">
+              <span className="text-sm font-semibold text-ink-2">₹{totalValue.toLocaleString('en-IN')}</span>
+              <span className="text-[10px] text-ink-4">
+                Subtotal ₹{subtotalValue.toLocaleString('en-IN')} + tax ₹{taxTotalValue.toLocaleString('en-IN')}
+              </span>
             </div>
           </div>
           <div className="md:col-span-3">
@@ -622,102 +679,142 @@ export const EditSOModal: React.FC<EditSOModalProps> = ({
               Add item
             </button>
           </div>
-          <div className="p-3 space-y-2">
-            {/* Column headings */}
-            <div className="grid grid-cols-[2.25rem_repeat(12,minmax(0,1fr))] gap-2 pb-1 border-b border-hairline">
-              <div className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide text-right">Sr</div>
-              <div className="col-span-3 text-[10px] font-semibold text-ink-3 uppercase tracking-wide">Product</div>
-              <div className="col-span-2 text-[10px] font-semibold text-ink-3 uppercase tracking-wide">SKU</div>
-              <div className="col-span-1 text-[10px] font-semibold text-ink-3 uppercase tracking-wide">Pack</div>
-              <div className="col-span-2 text-[10px] font-semibold text-ink-3 uppercase tracking-wide">Qty (units)</div>
-              <div className="col-span-2 text-[10px] font-semibold text-ink-3 uppercase tracking-wide">Unit Price (₹)</div>
-              <div className="col-span-1 text-[10px] font-semibold text-warn uppercase tracking-wide">MRP (₹)</div>
-              <div className="col-span-1" />
+          <div className="p-3 space-y-2.5 overflow-x-auto">
+            {/* Column headings — grid-template must stay identical to each item row below so headers line up. */}
+            <div className={ITEM_ROW_GRID_COLS}>
+              <div className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide text-center">Sr</div>
+              <div className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide">Product</div>
+              <div className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide">SKU</div>
+              <div className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide">Pack</div>
+              <div className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide">Qty (units)</div>
+              <div className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide">Unit Price (₹)</div>
+              <div className="text-[10px] font-semibold text-warn uppercase tracking-wide">MRP (₹)</div>
+              <div className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide">Tax %</div>
+              <div className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide">Tax amount (₹)</div>
+              <div className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide">Line total (₹)</div>
+              <div />
             </div>
             {items.map((item, index) => (
-              <div key={`edit-so-item-${index}`} className="grid grid-cols-[2.25rem_repeat(12,minmax(0,1fr))] gap-2">
-                <div className="flex items-center justify-end pr-0.5 text-xs tabular-nums text-ink-4">{index + 1}</div>
-                <input
-                  ref={(el) => {
-                    productInputRefs.current[index] = el;
-                  }}
-                  className="col-span-3 border border-border rounded px-2 py-1.5 text-sm disabled:bg-surface-3"
-                  placeholder="Search by product name or SKU…"
-                  aria-label="Product (search by name or SKU)"
-                  value={item.productName}
-                  disabled={!canEdit}
-                  autoComplete="off"
-                  onFocus={() => focusProductSuggest(index)}
-                  onChange={(e) => {
-                    setActiveProductSuggestIndex(index);
-                    updateItem(index, { productName: e.target.value });
-                  }}
-                />
-                <input
-                  className="col-span-2 border border-border rounded px-2 py-1.5 text-sm disabled:bg-surface-3 bg-surface-3"
-                  placeholder="Auto-filled"
-                  aria-label="SKU is filled automatically when a product is selected"
-                  value={item.sku}
-                  disabled
-                  readOnly
-                  title="SKU is filled automatically when a product is selected"
-                />
-                <input
-                  className="col-span-1 border border-border rounded px-2 py-1.5 text-sm disabled:bg-surface-3 bg-surface-3"
-                  placeholder="—"
-                  aria-label="Pack size is filled automatically when a product is selected"
-                  value={item.pack}
-                  disabled
-                  readOnly
-                  title="Pack size is filled automatically when a product is selected"
-                />
-                <input
-                  type="number"
-                  min={1}
-                  className="col-span-2 border border-border rounded px-2 py-1.5 text-sm disabled:bg-surface-3"
-                  placeholder="0"
-                  aria-label="Quantity (units)"
-                  value={item.orderedQty || ''}
-                  disabled={!canEdit}
-                  onChange={(e) => updateItem(index, { orderedQty: Number(e.target.value || 0) })}
-                />
-                <input
-                  type="number"
-                  min={0.01}
-                  step="0.01"
-                  className="col-span-2 border border-border rounded px-2 py-1.5 text-sm disabled:bg-surface-3"
-                  placeholder="0.00"
-                  aria-label="Unit price (₹)"
-                  value={item.unitPrice || ''}
-                  disabled={!canEdit}
-                  onChange={(e) => updateItem(index, { unitPrice: Number(e.target.value || 0) })}
-                />
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  className="col-span-1 border border-[color:var(--st-amber-fg)]/30 rounded px-2 py-1.5 text-sm disabled:bg-surface-3 bg-warn-soft text-warn"
-                  placeholder="0.00"
-                  aria-label="MRP from product master — editable per SO"
-                  value={item.mrp ?? ''}
-                  disabled={!canEdit}
-                  title="MRP from product master — editable per SO"
-                  onChange={(e) => updateItem(index, { mrp: e.target.value === '' ? null : Number(e.target.value) })}
-                />
-                <button
-                  type="button"
-                  onClick={() => removeItem(index)}
-                  disabled={!canEdit || items.length === 1}
-                  aria-label="Remove item"
-                  className="col-span-1 inline-flex items-center justify-center gap-1 border border-[color:var(--st-red-fg)]/30 rounded px-2 py-1.5 text-xs font-semibold text-err bg-err-soft hover:bg-err-soft disabled:opacity-60"
-                >
-                  <Trash2 size={13} />
-                </button>
-                {priceHints[index] ? (
-                  <div className="col-start-2 col-span-12 text-[11px] text-brand flex items-center gap-1">
-                    <span>💡</span>{priceHints[index]}
+              <div
+                key={`edit-so-item-${index}`}
+                className="rounded-lg border border-border bg-surface p-2.5 transition-colors hover:border-brand/40 hover:bg-surface/80 focus-within:border-brand/50 focus-within:ring-1 focus-within:ring-brand/20"
+              >
+                <div className={`${ITEM_ROW_GRID_COLS} items-start`}>
+                  <div className="flex items-start justify-center pt-1.5">
+                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface-3 text-[10px] font-semibold tabular-nums text-ink-3">
+                      {index + 1}
+                    </span>
                   </div>
-                ) : null}
+                  <input
+                    ref={(el) => {
+                      productInputRefs.current[index] = el;
+                    }}
+                    className="min-w-0 border border-border rounded-md px-2.5 py-2 text-sm bg-surface disabled:bg-surface-3 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand transition-shadow"
+                    placeholder="Search by product name or SKU…"
+                    aria-label="Product (search by name or SKU)"
+                    value={item.productName}
+                    disabled={!canEdit}
+                    autoComplete="off"
+                    onFocus={() => focusProductSuggest(index)}
+                    onChange={(e) => {
+                      setActiveProductSuggestIndex(index);
+                      updateItem(index, { productName: e.target.value });
+                    }}
+                  />
+                  <input
+                    className="min-w-0 border border-border rounded-md px-2.5 py-2 text-sm disabled:bg-surface-3 bg-surface-3 font-mono text-ink-2"
+                    placeholder="Auto-filled"
+                    aria-label="SKU is filled automatically when a product is selected"
+                    value={item.sku}
+                    disabled
+                    readOnly
+                    title="SKU is filled automatically when a product is selected"
+                  />
+                  <input
+                    className="min-w-0 border border-border rounded-md px-2.5 py-2 text-sm disabled:bg-surface-3 bg-surface-3 text-ink-2"
+                    placeholder="—"
+                    aria-label="Pack size is filled automatically when a product is selected"
+                    value={item.pack}
+                    disabled
+                    readOnly
+                    title="Pack size is filled automatically when a product is selected"
+                  />
+                  <input
+                    type="number"
+                    min={1}
+                    className="min-w-0 border border-border rounded-md px-2.5 py-2 text-sm disabled:bg-surface-3 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand transition-shadow"
+                    placeholder="0"
+                    aria-label="Quantity (units)"
+                    value={item.orderedQty || ''}
+                    disabled={!canEdit}
+                    onChange={(e) => updateItem(index, { orderedQty: Number(e.target.value || 0) })}
+                  />
+                  <input
+                    type="number"
+                    min={0.01}
+                    step="0.01"
+                    className="min-w-0 border border-border rounded-md px-2.5 py-2 text-sm disabled:bg-surface-3 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand transition-shadow"
+                    placeholder="0.00"
+                    aria-label="Unit price (₹)"
+                    value={item.unitPrice || ''}
+                    disabled={!canEdit}
+                    onChange={(e) => updateItem(index, { unitPrice: Number(e.target.value || 0) })}
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className="min-w-0 border border-[color:var(--st-amber-fg)]/30 rounded-md px-2.5 py-2 text-sm disabled:bg-surface-3 bg-warn-soft text-warn focus:outline-none focus:ring-2 focus:ring-warn/30 transition-shadow"
+                    placeholder="0.00"
+                    aria-label="MRP from product master — editable per SO"
+                    value={item.mrp ?? ''}
+                    disabled={!canEdit}
+                    title="MRP from product master — editable per SO"
+                    onChange={(e) => updateItem(index, { mrp: e.target.value === '' ? null : Number(e.target.value) })}
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.01"
+                    className="min-w-0 border border-border rounded-md px-2.5 py-2 text-sm bg-surface-2/60 disabled:bg-surface-3 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand transition-shadow"
+                    placeholder="5%"
+                    aria-label="Tax % — individual per-line tax"
+                    value={item.taxPct || ''}
+                    disabled={!canEdit}
+                    title="Individual per-line tax — % and ₹ amount stay in sync"
+                    onChange={(e) => handleTaxPctChange(index, e.target.value)}
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className="min-w-0 border border-border rounded-md px-2.5 py-2 text-sm bg-surface-2/60 disabled:bg-surface-3 focus:outline-none focus:ring-2 focus:ring-brand/40 focus:border-brand transition-shadow"
+                    placeholder="₹90"
+                    aria-label="Tax amount (₹) — individual per-line tax"
+                    value={item.taxAmount || ''}
+                    disabled={!canEdit}
+                    title="Individual per-line tax — % and ₹ amount stay in sync"
+                    onChange={(e) => handleTaxAmountChange(index, e.target.value)}
+                  />
+                  <div className="min-w-0 flex items-center px-2.5 py-2 rounded-md border border-brand-soft bg-brand-soft/60 text-sm font-bold text-brand tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
+                    ₹{(lineBase(item) + (Number(item.taxAmount) || 0)).toLocaleString('en-IN')}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeItem(index)}
+                    disabled={!canEdit || items.length === 1}
+                    aria-label="Remove item"
+                    className="inline-flex items-center justify-center gap-1 border border-[color:var(--st-red-fg)]/30 rounded-md px-2 py-2 text-xs font-semibold text-err bg-err-soft hover:bg-err-soft/70 disabled:opacity-60 transition-colors"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                  {priceHints[index] ? (
+                    <div className="col-[2/-1] -mt-0.5 text-[11px] text-brand flex items-center gap-1">
+                      <span>💡</span>{priceHints[index]}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             ))}
           </div>
