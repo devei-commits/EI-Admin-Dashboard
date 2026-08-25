@@ -93,6 +93,8 @@ export interface BatchSplit {
 }
 
 export interface OrderItem {
+  /** fulfillment_order_items.id */
+  id?: number;
   itemNo: string;
   sku: string;
   productName: string;
@@ -102,6 +104,9 @@ export interface OrderItem {
   unitPrice: number;
   mrp?: number | null;
   batchSplits: BatchSplit[];
+  /** Matching planning_extracted.id for this SO+product line — used for item-specific comments shared with Planning's PIs Extracted view. Null until the SO is planned or no match is found. */
+  planningExtractedId?: number | null;
+  commentCount?: number;
 }
 
 export interface SaleOrder {

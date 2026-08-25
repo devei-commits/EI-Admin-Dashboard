@@ -11,6 +11,8 @@ import {
   grnReceiptDocumentsLocked,
   grnReceiptPrerequisitesMet,
   initialGrnCopyDocRefs,
+  missingRequiredGrnDocs,
+  requiredGrnDocsError,
   resolveGrnExistingLabels,
 } from '../grnCopyReceiptDisplay';
 
@@ -150,5 +152,57 @@ describe('grnCopyReceiptDisplay', () => {
         },
       }),
     ).toBe(true);
+  });
+
+  describe('missingRequiredGrnDocs', () => {
+    it('only requires docs whose checklist box was ticked at Confirm Receipt', () => {
+      // Invoice and COA were ticked but no E-Way Bill came with this shipment — the E-Way Bill
+      // upload must not be demanded for a document that was never physically received.
+      const missing = missingRequiredGrnDocs({
+        receipt: { checklist: { invoice: true, coa: true } },
+      });
+      expect(missing).toEqual(['bill', 'coa']);
+    });
+
+    it('drops a doc from the missing list once it is both ticked and uploaded', () => {
+      const missing = missingRequiredGrnDocs({
+        receipt: { checklist: { invoice: true, coa: true } },
+        bill: { fileName: 'inv.pdf' },
+      });
+      expect(missing).toEqual(['coa']);
+    });
+
+    it('requires nothing when the checklist has no bill/waybill/coa items ticked', () => {
+      // Only MSDS + Weighment Slip were ticked — this GRN's shipment never carried an invoice,
+      // e-way bill, or COA, so nothing should block it.
+      const missing = missingRequiredGrnDocs({
+        receipt: { checklist: { msds: true, weighmentSlip: true } },
+      });
+      expect(missing).toEqual([]);
+    });
+
+    it('falls back to requiring all three when there is no checklist at all (legacy GRN)', () => {
+      const missing = missingRequiredGrnDocs({});
+      expect(missing).toEqual(['bill', 'waybill', 'coa']);
+    });
+  });
+
+  describe('requiredGrnDocsError', () => {
+    it('names only the checklist-ticked docs still missing a file', () => {
+      const error = requiredGrnDocsError({
+        receipt: { checklist: { ewayBill: true } },
+      });
+      expect(error).toContain('E-Way Bill');
+      expect(error).not.toContain('Tax Invoice');
+      expect(error).not.toContain('COA');
+    });
+
+    it('returns null once every checklist-ticked doc is uploaded', () => {
+      const error = requiredGrnDocsError({
+        receipt: { checklist: { invoice: true } },
+        bill: { fileName: 'inv.pdf' },
+      });
+      expect(error).toBeNull();
+    });
   });
 });

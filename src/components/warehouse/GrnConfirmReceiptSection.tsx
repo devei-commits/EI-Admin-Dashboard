@@ -14,6 +14,7 @@ import {
   GRN_RECEIPT_CHECKLIST_ITEMS,
   GRN_RECEIPT_MAX_PHOTOS,
   GRN_RECEIPT_MIN_VEHICLE_PHOTOS,
+  GRN_RECEIPT_MIN_DOCUMENT_PHOTOS,
   type GrnAssignmentType,
   type GrnReceiptChecklistKey,
   type InboundGrnReceiptMeta,
@@ -300,10 +301,16 @@ export const GrnConfirmReceiptSection: React.FC<GrnConfirmReceiptSectionProps> =
           'vehiclePhotos',
           vehiclePhotos,
           vehiclePhotoRef,
-          <>Vehicle Photos * · min {GRN_RECEIPT_MIN_VEHICLE_PHOTOS} (front + goods)</>,
+          <>Vehicle Photos * · min {GRN_RECEIPT_MIN_VEHICLE_PHOTOS}</>,
           'Add',
         )}
-        {renderPhotoField('documentPhotos', documentPhotos, docPhotoRef, <>Document Photos</>, 'Add')}
+        {renderPhotoField(
+          'documentPhotos',
+          documentPhotos,
+          docPhotoRef,
+          <>Document Photos * · min {GRN_RECEIPT_MIN_DOCUMENT_PHOTOS}</>,
+          'Add',
+        )}
       </div>
 
       {/* Remarks */}

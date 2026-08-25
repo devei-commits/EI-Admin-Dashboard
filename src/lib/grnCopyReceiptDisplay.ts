@@ -1,5 +1,6 @@
 import type { InboundGrnSourceDocuments } from './inboundGrnSourceDocs';
 import { formatInboundTableDate, resolveInboundWarehouseCode } from './inboundGrnTableDisplay';
+import type { GrnReceiptChecklistKey } from './inboundGrnReceiptMeta';
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 
@@ -479,12 +480,31 @@ export const GRN_REQUIRED_DOC_LABELS: Record<GrnRequiredDocKey, string> = {
   coa: 'COA',
 };
 
+/**
+ * Maps each file-upload doc key to the "Confirm Receipt" checklist item that says it physically
+ * arrived. A doc is only demanded here if that checklist box was actually ticked — asking for an
+ * E-Way Bill upload when the dock checklist says no E-Way Bill came with the shipment left the
+ * operator stuck on a document that doesn't exist for this GRN.
+ */
+const REQUIRED_DOC_CHECKLIST_KEY: Record<GrnRequiredDocKey, GrnReceiptChecklistKey> = {
+  bill: 'invoice',
+  waybill: 'ewayBill',
+  coa: 'coa',
+};
+
 /** Required documents with no file uploaded yet, in display order. */
 export function missingRequiredGrnDocs(
   sourceDocuments: GrnCopyReceiptInput['sourceDocuments'],
 ): GrnRequiredDocKey[] {
   const docs = sourceDocuments ?? {};
-  return GRN_REQUIRED_DOC_KEYS.filter((key) => !docUploaded(docs, key));
+  const checklist = docs.receipt?.checklist;
+  // A GRN from before the Confirm Receipt checklist existed has no checklist data at all — fall back
+  // to requiring all three rather than silently requiring nothing for it.
+  const hasChecklist = checklist != null && Object.values(checklist).some(Boolean);
+  return GRN_REQUIRED_DOC_KEYS.filter((key) => {
+    if (hasChecklist && !checklist![REQUIRED_DOC_CHECKLIST_KEY[key]]) return false;
+    return !docUploaded(docs, key);
+  });
 }
 
 /** One sentence naming what is still missing, or null when nothing is. */

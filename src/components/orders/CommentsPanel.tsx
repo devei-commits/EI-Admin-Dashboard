@@ -1,14 +1,46 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, MessageSquare, Send, Clock, ChevronRight, AlertCircle, CheckCircle2 } from 'lucide-react';
 import type { CommentFeedItem } from '../../types/orderFulfillment';
-import { fetchComments, addComment, resolveComment } from '../../services/fulfillment.service';
+import {
+  fetchComments,
+  addComment,
+  resolveComment,
+  fetchCommentCounts,
+  type CommentEntityType,
+} from '../../services/fulfillment.service';
 import { useToast } from '../../context/ToastContext';
 
+export type CommentScopeOption = {
+  /** planning_extracted.id for this SO+product line — the id item comments are keyed by. */
+  id: number | null;
+  label: string;
+  /** Shown when the line has no plan yet, explaining why it cannot be commented on. */
+  disabledReason?: string;
+};
+
 interface CommentsPanelProps {
-  entityType: 'so' | 'batch';
+  entityType: CommentEntityType;
   entityId: number;
   entityLabel: string;
   onClose: () => void;
+  /**
+   * Line items on this sale order. Rendered as a scope switcher so a comment can be filed against a
+   * specific product instead of the whole order — the panel opened from the SO row had no way to
+   * reach the per-item threads, which only existed behind the SO detail modal.
+   */
+  itemScopes?: CommentScopeOption[];
+  /**
+   * The whole-order thread, when the panel was opened on something narrower (e.g. Planning's PIs
+   * Extracted opens an item thread). Supplying it lets the same panel reach order-level comments,
+   * which are otherwise only visible from Fulfillment.
+   */
+  orderScope?: { id: number; label: string } | null;
+  /**
+   * RM/PM threads for this row's materials. Keyed by material id and shared with Items Involved, so
+   * a note about a material is visible wherever that material appears rather than being trapped on
+   * one planning row.
+   */
+  materialScopes?: { type: 'rm' | 'pm'; id: number; label: string }[];
 }
 
 function formatAt(dateStr: string): string {
@@ -35,9 +67,50 @@ function StagePill({ stage, slipped }: { stage: string; slipped?: boolean }) {
   );
 }
 
-export const CommentsPanel: React.FC<CommentsPanelProps> = ({ entityType, entityId, entityLabel, onClose }) => {
+export const CommentsPanel: React.FC<CommentsPanelProps> = ({
+  entityType, entityId, entityLabel, onClose, itemScopes, orderScope, materialScopes,
+}) => {
   const { addToast } = useToast();
+  // Which thread is open: the order itself, or one of its lines. Starts on the order.
+  const [scope, setScope] = useState<{ type: CommentEntityType; id: number; label: string }>({
+    type: entityType, id: entityId, label: entityLabel,
+  });
+  useEffect(() => {
+    setScope({ type: entityType, id: entityId, label: entityLabel });
+  }, [entityType, entityId, entityLabel]);
+
   const [feed, setFeed] = useState<CommentFeedItem[]>([]);
+
+  /**
+   * How many comments each material thread already holds, so a chip that has something to read is
+   * visibly distinct. Without this the only way to find a commented material was to click all of
+   * them in turn — this panel can show thirty at once.
+   */
+  // Keyed "rm-<id>" / "pm-<id>": RM and PM ids are separate namespaces and would otherwise collide.
+  const [materialCounts, setMaterialCounts] = useState<Record<string, number>>({});
+  const materialScopesKey = (materialScopes ?? []).map((m) => `${m.type}-${m.id}`).join(',');
+  useEffect(() => {
+    const rmIds = (materialScopes ?? []).filter((m) => m.type === 'rm').map((m) => m.id);
+    const pmIds = (materialScopes ?? []).filter((m) => m.type === 'pm').map((m) => m.id);
+    if (rmIds.length === 0 && pmIds.length === 0) { setMaterialCounts({}); return; }
+    let alive = true;
+    void Promise.all([fetchCommentCounts('rm', rmIds), fetchCommentCounts('pm', pmIds)]).then(
+      ([rm, pm]) => {
+        if (!alive) return;
+        // RM and PM ids are separate namespaces, so they are keyed by "type-id" to avoid collision.
+        const merged: Record<string, number> = {};
+        Object.entries(rm).forEach(([k, v]) => { merged[`rm-${k}`] = v; });
+        Object.entries(pm).forEach(([k, v]) => { merged[`pm-${k}`] = v; });
+        setMaterialCounts(merged);
+      },
+    );
+    return () => { alive = false; };
+    // Re-count after posting, so a new comment badges its chip immediately.
+    // Depend on the material KEYS, not the array identity: a caller passing an inline array literal
+    // would otherwise change the dependency every render and refetch in a loop. `materialScopes`
+    // is read inside but intentionally not a dependency for that reason.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [materialScopesKey, feed.length]);
   const [loading, setLoading] = useState(true);
   const [text, setText] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -47,14 +120,14 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({ entityType, entity
   const loadFeed = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await fetchComments(entityType, entityId);
+      const data = await fetchComments(scope.type, scope.id);
       setFeed(data);
     } catch {
       addToast('error', 'Failed to load comments');
     } finally {
       setLoading(false);
     }
-  }, [entityType, entityId, addToast]);
+  }, [scope.type, scope.id, addToast]);
 
   useEffect(() => { loadFeed(); }, [loadFeed]);
 
@@ -75,7 +148,7 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({ entityType, entity
     if (!trimmed) return;
     try {
       setSubmitting(true);
-      await addComment(entityType, entityId, trimmed);
+      await addComment(scope.type, scope.id, trimmed);
       setText('');
       await loadFeed();
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
@@ -94,7 +167,7 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({ entityType, entity
           <MessageSquare size={16} className="text-brand shrink-0" />
           <div className="min-w-0">
             <p className="text-xs font-bold text-ink truncate">History & Comments</p>
-            <p className="text-[10px] text-ink-3 truncate">{entityLabel}</p>
+            <p className="text-[10px] text-ink-3 truncate">{scope.label}</p>
           </div>
         </div>
         <button
@@ -105,6 +178,108 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({ entityType, entity
           <X size={16} />
         </button>
       </div>
+
+      {/* Scope switcher — comment on the order as a whole, or on one of its line items. */}
+      {(() => {
+        // The order thread: either the entity this panel opened on, or one supplied by the caller.
+        const orderTarget =
+          entityType === 'so'
+            ? { id: entityId, label: entityLabel }
+            : orderScope ?? null;
+        const hasAlternatives =
+          (Boolean(orderTarget) && (itemScopes?.length ?? 0) > 0) || (materialScopes?.length ?? 0) > 0;
+        if (!hasAlternatives) return null;
+        return (
+        <div className="border-b border-border px-3 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-3 mb-1.5">Comment on</p>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => orderTarget && setScope({ type: 'so', id: orderTarget.id, label: orderTarget.label })}
+              className={`px-2 py-1 rounded-md border text-[11px] font-semibold ${
+                scope.type === 'so'
+                  ? 'border-brand bg-brand-soft text-brand'
+                  : 'border-border bg-surface text-ink-2 hover:bg-surface-3'
+              }`}
+            >
+              Whole order
+            </button>
+            {itemScopes.map((it, i) => {
+              const disabled = it.id == null;
+              const active = scope.type === 'item' && it.id != null && scope.id === it.id;
+              return (
+                <button
+                  key={`${it.id ?? 'x'}-${i}`}
+                  type="button"
+                  disabled={disabled}
+                  title={disabled ? (it.disabledReason ?? 'Not linked to a plan yet') : `Comments for ${it.label}`}
+                  onClick={() => it.id != null && setScope({ type: 'item', id: it.id, label: it.label })}
+                  className={`max-w-[14rem] truncate px-2 py-1 rounded-md border text-[11px] font-semibold ${
+                    active
+                      ? 'border-brand bg-brand-soft text-brand'
+                      : disabled
+                        ? 'border-border bg-surface-3 text-ink-4 cursor-not-allowed'
+                        : 'border-border bg-surface text-ink-2 hover:bg-surface-3'
+                  }`}
+                >
+                  {it.label}
+                </button>
+              );
+            })}
+          </div>
+          {materialScopes && materialScopes.length > 0 && (
+            <>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-3 mt-2 mb-1.5">
+                Material (shared with Items Involved)
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {[...materialScopes]
+                  .sort((a, b) => {
+                    // Materials with comments lead, so the ones worth reading are not buried in a
+                    // list of thirty. Original order is preserved within each group.
+                    const ac = materialCounts[`${a.type}-${a.id}`] ?? 0;
+                    const bc = materialCounts[`${b.type}-${b.id}`] ?? 0;
+                    if ((ac > 0) !== (bc > 0)) return ac > 0 ? -1 : 1;
+                    return 0;
+                  })
+                  .map((m) => {
+                  const active = scope.type === m.type && scope.id === m.id;
+                  const count = materialCounts[`${m.type}-${m.id}`] ?? 0;
+                  const hasComments = count > 0;
+                  return (
+                    <button
+                      key={`${m.type}-${m.id}`}
+                      type="button"
+                      onClick={() => setScope({ type: m.type, id: m.id, label: m.label })}
+                      title={
+                        hasComments
+                          ? `${count} comment${count === 1 ? '' : 's'} on ${m.label} — visible on Items Involved too`
+                          : `No comments yet for ${m.label}`
+                      }
+                      className={`inline-flex items-center gap-1 max-w-[15rem] px-2 py-1 rounded-md border text-[11px] font-semibold ${
+                        active
+                          ? 'border-brand bg-brand-soft text-brand'
+                          : hasComments
+                            ? 'border-brand-soft bg-brand-soft/50 text-ink hover:bg-brand-soft'
+                            : 'border-border bg-surface text-ink-2 hover:bg-surface-3'
+                      }`}
+                    >
+                      <span className="text-ink-4">{m.type.toUpperCase()}</span>
+                      <span className="truncate">{m.label}</span>
+                      {hasComments && (
+                        <span className="ml-0.5 shrink-0 rounded-full bg-brand px-1.5 text-[10px] font-bold text-white">
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+        );
+      })()}
 
       {/* Feed */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">

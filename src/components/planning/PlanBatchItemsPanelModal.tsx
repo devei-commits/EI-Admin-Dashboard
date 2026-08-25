@@ -60,6 +60,57 @@ function PipelineCell({ value, unit }: { value: number; unit: string }): ReactEl
   return <span className="font-mono text-ink">{formatBatchItemsPanelCount(value)}</span>;
 }
 
+type PanelSortKey =
+  | 'itemCode' | 'itemName' | 'reqQty' | 'sih' | 'reserved'
+  | 'plannedQty' | 'poQty' | 'inTransit' | 'underGrn' | 'status';
+
+/** Header button. Rendered inside the existing <th> so column widths and alignment are unchanged. */
+function SortTh({
+  label, col, sortKey, sortDir, onSort, align = 'left',
+}: {
+  label: string;
+  col: PanelSortKey;
+  sortKey: PanelSortKey | null;
+  sortDir: 'asc' | 'desc';
+  onSort: (c: PanelSortKey) => void;
+  align?: 'left' | 'right' | 'center';
+}): React.ReactElement {
+  const active = sortKey === col;
+  const justify = align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start';
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(col)}
+      title={`Sort by ${label}`}
+      className={`flex w-full items-center gap-1 ${justify} font-semibold hover:text-ink ${active ? 'text-ink' : ''}`}
+    >
+      {label}
+      {/* Arrow slot is always reserved so headers do not shift when sorting. */}
+      <span aria-hidden className={active ? 'opacity-100' : 'opacity-30'}>
+        {active ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Status order runs from "on the shelf" to "nothing happening", so sorting by status groups the
+ * rows that actually need action at one end rather than alphabetically.
+ */
+const PANEL_STATUS_ORDER: Record<string, number> = {
+  'IN STOCK': 0, AVAILABLE: 0, 'UNDER GRN': 1, 'IN TRANSIT': 2,
+  'UNDER PO': 3, 'UNDER PROCUREMENT': 4, PLANNED: 5, 'PLANNING PENDING': 6, SHORTAGE: 7,
+};
+
+function panelSortValue(row: BatchItemsPanelRow, key: PanelSortKey): string | number {
+  switch (key) {
+    case 'itemCode': return String(row.itemCode ?? '');
+    case 'itemName': return String(row.itemName ?? '');
+    case 'status': return PANEL_STATUS_ORDER[String(row.status)] ?? 99;
+    default: return Number((row as unknown as Record<string, unknown>)[key]) || 0;
+  }
+}
+
 export function PlanBatchItemsPanelModal({
   batch,
   rows,
@@ -77,6 +128,27 @@ export function PlanBatchItemsPanelModal({
   batchSentToProduction = false,
 }: PlanBatchItemsPanelModalProps): ReactElement {
   const sizeKg = Number(batch.sizeKg) || 0;
+  const [sortKey, setSortKey] = React.useState<PanelSortKey | null>(null);
+  const [sortDir, setSortDir] = React.useState<'asc' | 'desc'>('asc');
+  /** Clicking the active column flips direction; a new column starts ascending. */
+  const handleSort = (col: PanelSortKey) => {
+    setSortDir((prev) => (sortKey === col ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'));
+    setSortKey(col);
+  };
+  const sortedRows = React.useMemo(() => {
+    if (!sortKey) return rows;
+    return [...rows].sort((a, b) => {
+      const av = panelSortValue(a, sortKey);
+      const bv = panelSortValue(b, sortKey);
+      let cmp: number;
+      if (typeof av === 'number' && typeof bv === 'number') cmp = av - bv;
+      else cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+      // Stable tiebreak on item code so equal rows never shuffle between renders.
+      if (cmp === 0) return String(a.itemCode ?? '').localeCompare(String(b.itemCode ?? ''), undefined, { numeric: true });
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [rows, sortKey, sortDir]);
+
   const allShortfallResolved = rows.length > 0 && rows.every((r) => r.shortfall <= 0);
 
   // Reserve controls: shown only in the single-kind (RM / PM) popups, per the spec.
@@ -93,7 +165,7 @@ export function PlanBatchItemsPanelModal({
   return (
     <div className="fixed inset-0 backdrop-blur-md bg-black/30 flex items-center justify-center z-50 p-4 overflow-y-auto">
       <div
-        className="bg-surface rounded-lg shadow-xl w-full max-w-6xl my-8"
+        className="bg-surface rounded-lg shadow-xl w-full max-w-[95vw] xl:max-w-[88rem] my-8"
         role="dialog"
         aria-modal="true"
         aria-labelledby="plan-batch-items-panel-title"
@@ -166,19 +238,39 @@ export function PlanBatchItemsPanelModal({
           <table className="w-full text-sm min-w-[1160px]">
             <thead className="sticky top-0 z-20 [&_th]:bg-surface-2">
               <tr className="bg-surface-2 border-b border-border text-[11px]">
-                <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2 whitespace-nowrap">Item Code</th>
-                <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2 min-w-[180px]">Item Name</th>
-                <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2 whitespace-nowrap">Req Qty</th>
-                <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">SIH</th>
+                <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2 whitespace-nowrap">
+                  <SortTh label="Item Code" col="itemCode" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="left" />
+                </th>
+                <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2 min-w-[180px]">
+                  <SortTh label="Item Name" col="itemName" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="left" />
+                </th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2 whitespace-nowrap">
+                  <SortTh label="Req Qty" col="reqQty" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="right" />
+                </th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">
+                  <SortTh label="SIH" col="sih" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="right" />
+                </th>
                 <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2 whitespace-nowrap">
                   Total Required (all batches)
                 </th>
-                <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">Reserved</th>
-                <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">Planned</th>
-                <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">PO Qty</th>
-                <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2 whitespace-nowrap">In Transit</th>
-                <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2 whitespace-nowrap">Under GRN</th>
-                <th scope="col" className="px-3 py-2 text-center font-semibold text-ink-2 whitespace-nowrap">Item Status</th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">
+                  <SortTh label="Reserved" col="reserved" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="right" />
+                </th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">
+                  <SortTh label="Planned" col="plannedQty" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="right" />
+                </th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">
+                  <SortTh label="PO Qty" col="poQty" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="right" />
+                </th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2 whitespace-nowrap">
+                  <SortTh label="In Transit" col="inTransit" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="right" />
+                </th>
+                <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2 whitespace-nowrap">
+                  <SortTh label="Under GRN" col="underGrn" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="right" />
+                </th>
+                <th scope="col" className="px-3 py-2 text-center font-semibold text-ink-2 whitespace-nowrap">
+                  <SortTh label="Item Status" col="status" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} align="center" />
+                </th>
                 {showReserve ? (
                   <th scope="col" className="px-3 py-2 text-center font-semibold text-ink-2 whitespace-nowrap">Reserve</th>
                 ) : null}
@@ -194,7 +286,7 @@ export function PlanBatchItemsPanelModal({
                   </td>
                 </tr>
               ) : null}
-              {rows.map((row) => (
+              {sortedRows.map((row) => (
                 <tr key={row.id} className="border-b border-hairline hover:bg-surface-2/60">
                   <td className="px-3 py-2">
                     <button

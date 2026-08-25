@@ -10,7 +10,13 @@ export type PlanBatchMaterialStatus =
   | 'PLANNED'
   | 'PLANNING PENDING'
   | 'UNDER PROCUREMENT'
-  | 'SHORTAGE';
+  | 'SHORTAGE'
+  // Coverage-stage statuses: which pipeline stage the requirement is actually met at. "AVAILABLE"
+  // alone hid the difference between stock on the shelf and 380 units merely ordered.
+  | 'IN STOCK'
+  | 'UNDER GRN'
+  | 'IN TRANSIT'
+  | 'UNDER PO';
 
 const MATERIAL_STATUS_EPS = 1e-6;
 
@@ -282,7 +288,14 @@ export function formatLeadDaysLabel(days: number | null, suffix: 'quoted' | 'act
 export function planBatchStatusClass(status: PlanBatchMaterialStatus): string {
   switch (status) {
     case 'AVAILABLE':
+    case 'IN STOCK':
       return 'text-emerald-700 font-semibold';
+    case 'UNDER GRN':
+      return 'text-teal-700 font-semibold';
+    case 'IN TRANSIT':
+      return 'text-blue-700 font-semibold';
+    case 'UNDER PO':
+      return 'text-indigo-700 font-semibold';
     case 'PLANNED':
       return 'text-blue-700 font-semibold';
     case 'UNDER PROCUREMENT':

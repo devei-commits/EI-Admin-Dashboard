@@ -5,10 +5,11 @@ function fmtConnectingDate(raw: string): string {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 }
 
-import { useState, useMemo, useRef, useEffect, useCallback, type ReactElement, type ReactNode } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback, useDeferredValue, type ReactElement, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { CheckCircle2, ChevronDown, Layers, Loader2, Search, X } from 'lucide-react';
+import { CheckCircle2, ChevronDown, Layers, Loader2, MessageSquare, Search, X } from 'lucide-react';
+import { CommentsPanel } from '../components/orders/CommentsPanel';
 import { useToast } from '../context/ToastContext';
 import { SortableTableTh, type SortDirection } from '../components/ui/SortableTableTh';
 import { TableSkeleton } from '../components/ui/Skeleton';
@@ -55,9 +56,10 @@ import {
   buildProductionBatchDetailPath,
 } from '../lib/planningBatchesNavigation';
 import { parseQtyLabel, parseQtyLabelInt } from '../lib/parseQtyLabel';
+import { buildPisMaterialScopes } from '../lib/pisMaterialCommentScopes';
 import type { FFStatus } from '../types/orderFulfillment';
 import type { SoPlanningAvailabilityItem, SoPlanningAvailabilityResponse } from '../services/fulfillment.service';
-import { fetchSoPlanningAvailability, fetchFulfillmentOrders } from '../services/fulfillment.service';
+import { fetchSoPlanningAvailability, fetchFulfillmentOrders, fetchSalesOrdersDashboard } from '../services/fulfillment.service';
 import {
   fetchPlanningExtractedList,
   fetchPlanningExtractedById,
@@ -1390,6 +1392,11 @@ function rmProcurementFieldsFromKg(
 }
 
 /** For PIs Extracted table: planned units created from saved custom batch kg, else fallback from batch count × batch size. */
+/** Lower-cased, whitespace-collapsed text for substring search. */
+function normalizeForSearch(value: unknown): string {
+  return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
 function getCreatedAndRemainingUnits(order: SalesOrder): { createdUnits: number; remainingUnits: number } {
   const orderUnits = parseUnitCount(order.orderQty);
   if (orderUnits <= 0) return { createdUnits: 0, remainingUnits: 0 };
@@ -2815,8 +2822,48 @@ const Planning = () => {
   const queryClient = useQueryClient();
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [selectedRowForDetail, setSelectedRowForDetail] = useState<SalesOrder | null>(null);
+  const [pisCommentTarget, setPisCommentTarget] = useState<
+    { id: number; label: string; soNumber?: string; productName?: string } | null
+  >(null);
+  /**
+   * Whole-order comment thread for the SO behind the open PIs row.
+   *
+   * PIs Extracted keys its comments by planning_extracted.id — the ITEM thread — so order-level
+   * comments left in Fulfillment were invisible here. Order comments are keyed by
+   * fulfillment_orders.id, which the planning row does not carry, so it is resolved from the SO
+   * number when the panel opens.
+   */
+  const [pisOrderScope, setPisOrderScope] = useState<{ id: number; label: string } | null>(null);
+  /** RM/PM threads for the open PIs row, keyed by material id and shared with Items Involved. */
+  const [pisMaterialScopes, setPisMaterialScopes] = useState<
+    { type: 'rm' | 'pm'; id: number; label: string }[]
+  >([]);
+  /** Material comment thread opened straight from an Items Involved row. */
+  const [materialCommentTarget, setMaterialCommentTarget] = useState<
+    { type: 'rm' | 'pm'; id: number; label: string } | null
+  >(null);
+  useEffect(() => {
+    const soNo = String(pisCommentTarget?.soNumber ?? '').trim();
+    if (!soNo) { setPisOrderScope(null); return; }
+    let alive = true;
+    void fetchSalesOrdersDashboard({ search: soNo })
+      .then((res) => {
+        if (!alive) return;
+        const match = (res.rows ?? []).find(
+          (r) => String(r.soNo ?? '').trim().toLowerCase() === soNo.toLowerCase(),
+        );
+        setPisOrderScope(match ? { id: Number(match.id), label: `${soNo} · whole order` } : null);
+      })
+      .catch(() => { if (alive) setPisOrderScope(null); });
+    return () => { alive = false; };
+  }, [pisCommentTarget?.soNumber]);
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [searchTerm, setSearchTerm] = useState('');
+  /**
+   * Filtering runs against a deferred copy of the query, so keystrokes paint immediately and the
+   * (heavier) row filter catches up. Without this every character blocked on re-filtering the list.
+   */
+  const deferredPisSearch = useDeferredValue(searchTerm);
   const [dateFilter, setDateFilter] = useState({ from: '', to: '' });
   const [pisPage, setPisPage] = useState(1);
   const [pisPageSize, setPisPageSize] = useState(20);
@@ -4851,44 +4898,61 @@ const Planning = () => {
     return ids;
   }, [pisRows, dateFilter]);
 
-  const filteredPisOrders = useMemo(() => {
-    const normalizeForSearch = (value: unknown): string =>
-      String(value || '')
-        .toLowerCase()
-        .replace(/\s+/g, ' ')
-        .trim();
+  /**
+   * Searchable text per PIs row, rebuilt only when the rows change.
+   *
+   * The filter used to normalise every field of every row on each keystroke — roughly seven
+   * lower-case/whitespace passes per row — which is why this search felt slower than other modules.
+   */
+  const pisSearchIndex = useMemo(
+    () =>
+      pisRows.map((order) => {
+        const o = order as SalesOrder & {
+          clientName?: string;
+          customer_name?: string;
+          client_name?: string;
+        };
+        return normalizeForSearch(
+          [
+            o.productName,
+            o.productCode,
+            o.soNumber,
+            o.customerName,
+            o.clientName,
+            o.customer_name,
+            o.client_name,
+          ].join(' '),
+        );
+      }),
+    [pisRows],
+  );
 
-    return pisRows.filter((order) => {
+  const filteredPisOrders = useMemo(() => {
+    // The query is normalised ONCE, not per row. It used to be recomputed inside the loop, so a
+    // 300-row list normalised the same string 300 times on every keystroke.
+    const q = normalizeForSearch(deferredPisSearch);
+
+    return pisRows.filter((order, idx) => {
       if (!matchesDateRangeFilter(order.orderDate, dateFilter.from, dateFilter.to)) return false;
-      const { remainingUnits } = getCreatedAndRemainingUnits(order);
+
+      // getCreatedAndRemainingUnits parses qty/kg labels for every row. Only "Not Planned" needs it,
+      // so it is no longer run for the other four filter states.
       const matchesStatus =
         statusFilter === 'All' ||
         (statusFilter === 'Prod Released' && order.bomStatus === 'Production Released') ||
         (statusFilter === 'In Progress' && order.bomStatus === 'In Progress') ||
         (statusFilter === 'Planned' && order.bomStatus === 'Planned') ||
-        (statusFilter === 'Not Planned' && remainingUnits > 0 && (Number(order.batchCount) || 0) === 0);
+        (statusFilter === 'Not Planned' &&
+          getCreatedAndRemainingUnits(order).remainingUnits > 0 &&
+          (Number(order.batchCount) || 0) === 0);
 
-      const q = normalizeForSearch(searchTerm);
       if (!q) return matchesStatus;
-
-      const clientSearchText = [
-        order.customerName,
-        (order as SalesOrder & { clientName?: string; customer_name?: string; client_name?: string }).clientName,
-        (order as SalesOrder & { clientName?: string; customer_name?: string; client_name?: string }).customer_name,
-        (order as SalesOrder & { clientName?: string; customer_name?: string; client_name?: string }).client_name,
-      ]
-        .map((v) => normalizeForSearch(v))
-        .join(' ');
-
-      const matchesSearch =
-        normalizeForSearch(order.productName).includes(q) ||
-        normalizeForSearch(order.productCode).includes(q) ||
-        normalizeForSearch(order.soNumber).includes(q) ||
-        clientSearchText.includes(q);
-
-      return matchesStatus && matchesSearch;
+      if (!matchesStatus) return false;
+      // Pre-built, memoised per row — a keystroke is now one substring test per row instead of
+      // seven string normalisations.
+      return (pisSearchIndex[idx] ?? '').includes(q);
     });
-  }, [pisRows, statusFilter, searchTerm, dateFilter]);
+  }, [pisRows, pisSearchIndex, statusFilter, deferredPisSearch, dateFilter]);
 
   useEffect(() => {
     setPisPage(1);
@@ -7914,16 +7978,48 @@ const Planning = () => {
                             })()}
                           </td>
                           <td className="px-4 py-3 text-right whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handlePlanBatches(order);
-                              }}
-                              className="px-3 py-1.5 bg-surface hover:bg-surface-2 text-ink border border-border rounded text-xs font-semibold"
-                            >
-                              {hasBatches ? '✏ Edit Plan' : '➕ Plan Batches'}
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPisCommentTarget({
+                                    id: Number(order.id),
+                                    label: `${order.soNumber} · ${order.productName}`,
+                                    soNumber: order.soNumber,
+                                    productName: order.productName,
+                                  });
+                                  // Comments hang on the MATERIAL, so the thread follows it into
+                                  // Items Involved. The planning row's BOM entries already carry
+                                  // raw_material_id / pack_material_id, so the id is read straight
+                                  // off the line — the earlier master-list lookup produced no chips
+                                  // whenever those lists had not been fetched yet.
+                                  setPisMaterialScopes(
+                                    buildPisMaterialScopes(
+                                      order.rawMaterials,
+                                      order.packagingMaterials,
+                                      rawMaterialsList,
+                                      packMaterialsList,
+                                    ),
+                                  );
+                                }}
+                                className="p-1.5 rounded-lg hover:bg-brand-soft text-ink-4 hover:text-brand transition-colors"
+                                title="Item comments"
+                                aria-label="Item comments"
+                              >
+                                <MessageSquare size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePlanBatches(order);
+                                }}
+                                className="px-3 py-1.5 bg-surface hover:bg-surface-2 text-ink border border-border rounded text-xs font-semibold"
+                              >
+                                {hasBatches ? '✏ Edit Plan' : '➕ Plan Batches'}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -8397,14 +8493,41 @@ const Planning = () => {
                             }`}
                           >
                             <td className="px-2 py-2 whitespace-nowrap">
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); setUsedInModalItem(item); }}
-                                className="text-brand hover:text-brand hover:underline font-medium font-mono text-xs"
-                                title={`View batches using this ${item.itemType}`}
-                              >
-                                {item.code}
-                              </button>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); setUsedInModalItem(item); }}
+                                  className="text-brand hover:text-brand hover:underline font-medium font-mono text-xs"
+                                  title={`View batches using this ${item.itemType}`}
+                                >
+                                  {item.code}
+                                </button>
+                                {/* Material comment thread — the same one PIs Extracted writes to,
+                                    keyed by material id so notes follow the material across screens. */}
+                                {(() => {
+                                  const isRm = item.itemType === 'RM';
+                                  const matId = Number(isRm ? item.raw_material_id : item.pack_material_id);
+                                  if (!Number.isFinite(matId) || matId <= 0) return null;
+                                  return (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setMaterialCommentTarget({
+                                          type: isRm ? 'rm' : 'pm',
+                                          id: matId,
+                                          label: `${item.code} · ${item.name}`,
+                                        });
+                                      }}
+                                      title={`Comments for ${item.code}`}
+                                      className="text-ink-4 hover:text-brand"
+                                      aria-label={`Comments for ${item.code}`}
+                                    >
+                                      <MessageSquare size={12} />
+                                    </button>
+                                  );
+                                })()}
+                              </div>
                             </td>
                             <td className="px-2 py-2 min-w-[160px]">
                               <div className="flex items-start gap-1.5">
@@ -12057,6 +12180,32 @@ const Planning = () => {
             </div>
           </div>
         </PlanningModalShell>
+      )}
+
+      {materialCommentTarget && (
+        <CommentsPanel
+          entityType={materialCommentTarget.type}
+          entityId={materialCommentTarget.id}
+          entityLabel={materialCommentTarget.label}
+          onClose={() => setMaterialCommentTarget(null)}
+        />
+      )}
+
+      {pisCommentTarget && (
+        <CommentsPanel
+          entityType="item"
+          entityId={pisCommentTarget.id}
+          entityLabel={pisCommentTarget.label}
+          orderScope={pisOrderScope}
+          materialScopes={pisMaterialScopes}
+          itemScopes={[
+            {
+              id: pisCommentTarget.id,
+              label: pisCommentTarget.productName ?? pisCommentTarget.label,
+            },
+          ]}
+          onClose={() => { setPisCommentTarget(null); setPisOrderScope(null); setPisMaterialScopes([]); }}
+        />
       )}
     </div>
   );

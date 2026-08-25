@@ -103,12 +103,22 @@ export function computeBatchItemsPanelStatus(
   //   SHORTAGE          → not covered and nothing incoming
   const EPS = 1e-6;
   const req = Number(reqQty) || 0;
-  if (req <= EPS) return 'AVAILABLE';
-  const stock = Math.max(0, Number(reserved) || 0) + Math.max(0, Number(free) || 0);
-  const procurement =
-    Math.max(0, Number(poQty) || 0) + Math.max(0, Number(inTransit) || 0) + Math.max(0, Number(underGrn) || 0);
-  if (stock + procurement >= req - EPS) return 'AVAILABLE';
-  if (procurement > EPS) return 'UNDER PROCUREMENT';
+  if (req <= EPS) return 'IN STOCK';
+  const n = (v: number | undefined) => Math.max(0, Number(v) || 0);
+
+  // Name the status after the NEAREST stage at which the requirement is actually covered, working
+  // from stock on the shelf outwards. A single "AVAILABLE" covered everything from real stock to a
+  // PO that has not shipped, so a row with SIH 0 and 380 on order read the same as one in hand.
+  const stock = n(reserved) + n(free);
+  if (stock >= req - EPS) return 'IN STOCK';
+  if (stock + n(underGrn) >= req - EPS) return 'UNDER GRN';
+  if (stock + n(underGrn) + n(inTransit) >= req - EPS) return 'IN TRANSIT';
+  if (stock + n(underGrn) + n(inTransit) + n(poQty) >= req - EPS) return 'UNDER PO';
+
+  // Not covered. `plannedQty` is deliberately NOT consulted: it is the quantity allocated to this
+  // batch (demand), and counting it made SIH-0 rows read as covered — the defect the existing test
+  // "IGNORES batch-allocation plannedQty" was written to lock down. Only real pipeline counts.
+  if (n(poQty) + n(inTransit) + n(underGrn) > EPS) return 'UNDER PROCUREMENT';
   return 'SHORTAGE';
 }
 

@@ -447,13 +447,45 @@ export async function fetchBatchesDashboard(params: BatchDashboardParams = {}): 
 
 /* ── Comments ── */
 
-export async function fetchComments(entityType: 'so' | 'batch', entityId: number): Promise<CommentFeedItem[]> {
+/** Threads a comment can hang on. 'rm'/'pm' are per-material and shared across Planning + Items Involved. */
+export type CommentEntityType = 'so' | 'batch' | 'item' | 'rm' | 'pm';
+
+/**
+ * Comment counts for many threads in one request — the panel can show ~30 material chips, and
+ * asking per chip would mean ~30 round-trips just to know which have anything to read.
+ * Ids with no comments are omitted from the response.
+ */
+export async function fetchCommentCounts(
+  entityType: CommentEntityType,
+  ids: number[],
+): Promise<Record<number, number>> {
+  const clean = [...new Set(ids.filter((n) => Number.isInteger(n) && n > 0))];
+  if (clean.length === 0) return {};
+  try {
+    const res = await api.get<{ counts?: Record<string, number> }>(
+      `${BASE}/comment-counts?entityType=${entityType}&ids=${clean.join(',')}`,
+    );
+    const data = (res as { data?: { counts?: Record<string, number> } })?.data ?? res;
+    const out: Record<number, number> = {};
+    Object.entries(data?.counts ?? {}).forEach(([k, v]) => {
+      const id = Number(k);
+      const n = Number(v);
+      if (Number.isFinite(id) && n > 0) out[id] = n;
+    });
+    return out;
+  } catch {
+    // Non-fatal: chips simply render without a badge.
+    return {};
+  }
+}
+
+export async function fetchComments(entityType: CommentEntityType, entityId: number): Promise<CommentFeedItem[]> {
   const res = await api.get(`${BASE}/comments/${entityType}/${entityId}`);
   const data = (res as any)?.data ?? res;
   return Array.isArray(data) ? data : [];
 }
 
-export async function addComment(entityType: 'so' | 'batch', entityId: number, text: string): Promise<void> {
+export async function addComment(entityType: CommentEntityType, entityId: number, text: string): Promise<void> {
   await api.post(`${BASE}/comments/${entityType}/${entityId}`, { text });
 }
 

@@ -97,7 +97,14 @@ export function grnReceiptValidationErrors(meta: InboundGrnReceiptMeta): string[
   const anyChecklist = Object.values(meta.checklist ?? {}).some(Boolean);
   if (!anyChecklist) errors.push('Tick the documents received in the checklist.');
   if ((meta.vehiclePhotos?.length ?? 0) < GRN_RECEIPT_MIN_VEHICLE_PHOTOS) {
-    errors.push(`Add at least ${GRN_RECEIPT_MIN_VEHICLE_PHOTOS} vehicle photos (front + goods).`);
+    errors.push(
+      `Add at least ${GRN_RECEIPT_MIN_VEHICLE_PHOTOS} vehicle photo${GRN_RECEIPT_MIN_VEHICLE_PHOTOS === 1 ? '' : 's'}.`
+    );
+  }
+  if ((meta.documentPhotos?.length ?? 0) < GRN_RECEIPT_MIN_DOCUMENT_PHOTOS) {
+    errors.push(
+      `Add at least ${GRN_RECEIPT_MIN_DOCUMENT_PHOTOS} document photo${GRN_RECEIPT_MIN_DOCUMENT_PHOTOS === 1 ? '' : 's'}.`
+    );
   }
   return errors;
 }

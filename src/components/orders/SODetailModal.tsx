@@ -4,10 +4,11 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Package, MapPin, FileText, Truck, CheckCircle } from 'lucide-react';
+import { Package, MapPin, FileText, Truck, CheckCircle, MessageSquare } from 'lucide-react';
 import { UnifiedModal as Modal, UnifiedButton as Button } from '../ui/UnifiedComponents';
 import { StatusBadge } from './StatusBadge';
 import { ProcThead } from '../procurement/ProcSection';
+import { CommentsPanel } from './CommentsPanel';
 import type { SODetailModalProps } from '../../types/orderFulfillment';
 import type { BatchSplit, OrderItem } from '../../types/orderFulfillment';
 import type { SoPlanningAvailabilityResponse, SoPlanningAvailabilityItem, SoPlanningBatchAvailabilityRow } from '../../services/fulfillment.service';
@@ -50,6 +51,7 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
 }) => {
   const [planningAvailability, setPlanningAvailability] = useState<SoPlanningAvailabilityResponse | null>(null);
   const [planningAvailabilityLoading, setPlanningAvailabilityLoading] = useState(false);
+  const [itemCommentTarget, setItemCommentTarget] = useState<{ id: number; label: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,6 +113,7 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
   );
 
   return (
+    <>
     <Modal
       isOpen={isOpen}
       onClose={onClose}
@@ -245,10 +248,25 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
             onAction={onAction}
             planningItem={availabilityMap.get(`${item.productName}__${item.sku}`) ?? availabilityMap.get(item.productName) ?? null}
             planningAvailabilityLoading={planningAvailabilityLoading}
+            onOpenComments={() => {
+              if (item.planningExtractedId != null) {
+                setItemCommentTarget({ id: item.planningExtractedId, label: `${saleOrder.soNo} · ${item.productName}` });
+              }
+            }}
           />
         ))}
       </div>
     </Modal>
+
+    {itemCommentTarget && (
+      <CommentsPanel
+        entityType="item"
+        entityId={itemCommentTarget.id}
+        entityLabel={itemCommentTarget.label}
+        onClose={() => setItemCommentTarget(null)}
+      />
+    )}
+    </>
   );
 };
 
@@ -258,12 +276,14 @@ function ItemWithBatches({
   onAction,
   planningItem,
   planningAvailabilityLoading,
+  onOpenComments,
 }: {
   item: OrderItem;
   soNo: string;
   onAction: (action: string, soNo: string, split?: BatchSplit) => void;
   planningItem: SoPlanningAvailabilityItem | null;
   planningAvailabilityLoading: boolean;
+  onOpenComments: () => void;
 }) {
   const readyQty = item.batchSplits.reduce(
     (sum, sp) =>
@@ -294,18 +314,35 @@ function ItemWithBatches({
             </span>
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-[9.5px] text-ink-3">FG Ready / Ordered</div>
-          <div className="font-mono text-sm font-black text-ok">
-            {formatNumber(readyQty)}
-            <span className="text-[10px] text-ink-3 font-normal">
-              {' '}
-              / {formatNumber(item.orderedQty)}
-            </span>
+        <div className="flex items-start gap-2">
+          <div className="text-right">
+            <div className="text-[9.5px] text-ink-3">FG Ready / Ordered</div>
+            <div className="font-mono text-sm font-black text-ok">
+              {formatNumber(readyQty)}
+              <span className="text-[10px] text-ink-3 font-normal">
+                {' '}
+                / {formatNumber(item.orderedQty)}
+              </span>
+            </div>
+            <div className="text-[9.5px] text-ink-3">
+              Value {formatCurrency(itemValue)}
+            </div>
           </div>
-          <div className="text-[9.5px] text-ink-3">
-            Value {formatCurrency(itemValue)}
-          </div>
+          <button
+            type="button"
+            onClick={onOpenComments}
+            disabled={item.planningExtractedId == null}
+            title={item.planningExtractedId == null ? 'Comments unavailable — item not yet linked to a plan' : 'Item comments'}
+            className="relative p-1.5 rounded-lg hover:bg-brand-soft text-ink-4 hover:text-brand transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            aria-label="Item comments"
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            {!!item.commentCount && item.commentCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-brand text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+                {item.commentCount > 9 ? '9+' : item.commentCount}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 

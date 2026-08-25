@@ -14,10 +14,11 @@ import {
   resolveSoIdByNo,
   cancelFulfillmentOrder,
   manualFulfillFulfillmentOrder,
+  fetchFulfillmentOrderById,
 } from '../../services/fulfillment.service';
 import { SALES_ORDER_STATUS_CONFIG, SALES_ORDER_STATUS_FILTER_OPTIONS } from '../../constants/orderFulfillment';
 import { formatLakhs } from '../../utils/orderFulfillmentUtils';
-import { CommentsPanel } from './CommentsPanel';
+import { CommentsPanel, type CommentScopeOption } from './CommentsPanel';
 import { SoActionModals, type SoActionModalsHandle, type SoUpdatePayload } from './SoActionModals';
 import { ProcSectionHeader, ProcFilterBar, ProcThead, ProcTableCard } from '../procurement/ProcSection';
 import { TableSkeleton } from '../ui/Skeleton';
@@ -394,6 +395,29 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
 
   // Comments panel
   const [commentTarget, setCommentTarget] = useState<{ id: number; label: string } | null>(null);
+  /**
+   * Line items of the SO whose comments panel is open, so a comment can be filed against a specific
+   * product. Item threads are keyed by planning_extracted.id (shared with Planning's PIs Extracted
+   * view); a line with no plan yet has none and is offered as disabled rather than hidden.
+   */
+  const [commentItemScopes, setCommentItemScopes] = useState<CommentScopeOption[]>([]);
+  useEffect(() => {
+    if (!commentTarget) { setCommentItemScopes([]); return; }
+    let alive = true;
+    void fetchFulfillmentOrderById(commentTarget.id)
+      .then((so) => {
+        if (!alive || !so) return;
+        setCommentItemScopes(
+          (so.items ?? []).map((it) => ({
+            id: it.planningExtractedId ?? null,
+            label: `${it.productName}${it.pack ? ` · ${it.pack}` : ''}`,
+            disabledReason: 'Not linked to a plan yet — comment on the whole order instead',
+          })),
+        );
+      })
+      .catch(() => { if (alive) setCommentItemScopes([]); });
+    return () => { alive = false; };
+  }, [commentTarget]);
 
   // Client group collapse + row action menu
   const [collapsedClients, setCollapsedClients] = useState<Set<string>>(new Set());
@@ -841,6 +865,7 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
             entityType="so"
             entityId={commentTarget.id}
             entityLabel={commentTarget.label}
+            itemScopes={commentItemScopes}
             onClose={() => setCommentTarget(null)}
           />
         </>

@@ -59,13 +59,17 @@ const batch: PlanningBatchAllRow = {
 };
 
 describe('computeBatchItemsPanelStatus (real stock + procurement; batch-allocation plannedQty ignored)', () => {
-  it('marks AVAILABLE when reserved + free stock + procurement covers the requirement', () => {
-    // reserved (last arg) 85 ≥ req 85 → covered
-    expect(computeBatchItemsPanelStatus(85, 0, 0, 0, 0, 0, 85)).toBe('AVAILABLE');
-    // reserved 30 + PO 10 = 40 ≥ req 35 → covered
-    expect(computeBatchItemsPanelStatus(35, 0, 0, 10, 0, 0, 30)).toBe('AVAILABLE');
+  it('marks IN STOCK when reserved + free stock alone covers the requirement', () => {
+    // reserved (last arg) 85 ≥ req 85 → covered from stock
+    expect(computeBatchItemsPanelStatus(85, 0, 0, 0, 0, 0, 85)).toBe('IN STOCK');
     // free stock 280 ≥ req 85 → covered (free counts toward availability)
-    expect(computeBatchItemsPanelStatus(85, 280, 0, 0, 0, 0, 0)).toBe('AVAILABLE');
+    expect(computeBatchItemsPanelStatus(85, 280, 0, 0, 0, 0, 0)).toBe('IN STOCK');
+  });
+
+  it('names the pipeline stage when stock alone does NOT cover it', () => {
+    // reserved 30 short of req 35; the PO closes the gap → covered, but not from stock.
+    // Previously this reported the same "AVAILABLE" as goods on the shelf.
+    expect(computeBatchItemsPanelStatus(35, 0, 0, 10, 0, 0, 30)).toBe('UNDER PO');
   });
 
   it('IGNORES batch-allocation plannedQty (demand ≠ supply): SIH-0 with only plannedQty is SHORTAGE', () => {
@@ -108,7 +112,7 @@ describe('buildBatchItemsPanelRows', () => {
     expect(sles?.plannedQty).toBe(200);
     expect(sles?.poQty).toBe(300);
     expect(sles?.inTransit).toBe(100);
-    expect(sles?.status).toBe('AVAILABLE');
+    expect(sles?.status).toBe('IN STOCK');
 
     const capb = rows.find((r) => r.itemCode === '1000123');
     expect(capb?.reqQty).toBe(25);
@@ -116,6 +120,6 @@ describe('buildBatchItemsPanelRows', () => {
 
     const glycerin = rows.find((r) => r.itemCode === '1000045');
     expect(glycerin?.reqQty).toBe(35);
-    expect(glycerin?.status).toBe('AVAILABLE');
+    expect(glycerin?.status).toBe('IN STOCK');
   });
 });
