@@ -203,6 +203,9 @@ export interface PlanningBatchRow {
   sizeKg: number | null;
   rmLines: unknown[];
   pmLines: unknown[];
+  /** When THIS batch's own BOM copy was confirmed — per batch, not per SO. A new batch (or one whose
+      rm/pmLines were just edited) starts unconfirmed even if another batch on the same SO was signed off. */
+  bomConfirmedAt?: string | null;
   /** Linked production BMR status when batch was sent to Production. */
   productionBmrStatus?: string | null;
   /** False once Production confirms the batch (`bmr_status` past `draft`). */
@@ -257,10 +260,19 @@ export async function fetchBatchById(planningExtractedId: string, batchId: numbe
   }
 }
 
-/** Add one batch with BOM from product master (not override). Returns the new batch. Throws on API error body. */
-export async function addOneBatchFromMaster(planningExtractedId: string): Promise<PlanningBatchRow | null> {
+/**
+ * Add one batch with BOM from product master (not override). Returns the new batch. Throws on API
+ * error body — including when the order has no remaining kg left to plan (400), unless `isBuffer`
+ * is set, which deliberately sizes the batch above the SO qty instead of capping to what's left.
+ */
+export async function addOneBatchFromMaster(
+  planningExtractedId: string,
+  isBuffer: boolean = false
+): Promise<PlanningBatchRow | null> {
   try {
-    const data = await api.post<PlanningBatchRow>(`/api/v1/planning-extracted/${planningExtractedId}/batches/add-one`, {});
+    const data = await api.post<PlanningBatchRow>(`/api/v1/planning-extracted/${planningExtractedId}/batches/add-one`, {
+      isBuffer,
+    });
     return data ?? null;
   } catch (e: unknown) {
     const msg = errorMessageFromApiCatch(e, '');
@@ -283,6 +295,29 @@ export async function updateBatch(
     return data ?? null;
   } catch (e: unknown) {
     const msg = errorMessageFromApiCatch(e, 'Could not save batch');
+    if (msg) throw new Error(msg);
+    return null;
+  }
+}
+
+/**
+ * Confirm (or unconfirm) THIS batch's own BOM copy — per batch, not per SO. Throws with the API
+ * message on error (e.g. BATCH_BOM_EMPTY when the batch has no rm/pmLines to confirm).
+ */
+export async function confirmBatchBom(
+  planningExtractedId: string,
+  batchId: number,
+  confirmed: boolean = true
+): Promise<PlanningBatchRow | null> {
+  try {
+    const res = await api.post<PlanningBatchRow>(
+      `/api/v1/planning-extracted/${planningExtractedId}/batches/${batchId}/confirm-bom`,
+      { confirmed }
+    );
+    const data = res?.data ?? res;
+    return data ?? null;
+  } catch (e: unknown) {
+    const msg = errorMessageFromApiCatch(e, 'Could not confirm batch BOM');
     if (msg) throw new Error(msg);
     return null;
   }

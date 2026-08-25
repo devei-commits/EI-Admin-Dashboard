@@ -66,6 +66,9 @@ interface InboxRow {
   sih: number | null;
   leadDays: number | null;
   expectedConnecting: string | null;
+  /** PR-created-date + vendor lead time — an estimate of arrival if ordered right now, used only to
+      flag risk of missing needBy (see expLevel below). Not shown as the headline date. */
+  estimatedArrivalIfOrderedNow: string | null;
   needBy: string | null;
   daysOpen: number;
   slaLevel: SlaLevel;
@@ -104,7 +107,12 @@ function buildRow(req: ProcurementRequest): InboxRow {
     rop,
     sih,
     leadDays,
-    expectedConnecting: addDays(requestedDate, leadDays),
+    // "Expected Connecting" is the date Planning actually expects/needs this by (from the release),
+    // not a re-derived guess — it previously computed createdDate + leadDays, which for a fresh,
+    // not-yet-quoted PR with no lead time on file just showed "today", regardless of when the
+    // requirement is really needed.
+    expectedConnecting: req.dueDate ?? null,
+    estimatedArrivalIfOrderedNow: addDays(requestedDate, leadDays),
     needBy: req.dueDate ?? null,
     daysOpen,
     slaLevel: slaLevelFromDaysOpen(daysOpen, SLA_DEFAULTS.procurementDays),
@@ -360,7 +368,7 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
             </thead>
             <tbody className="divide-y divide-hairline">
               {rows.map((r) => {
-                const expLevel = expectedVsNeedByLevel(r.expectedConnecting, r.needBy);
+                const expLevel = expectedVsNeedByLevel(r.estimatedArrivalIfOrderedNow, r.needBy);
                 return (
                   <tr key={r.req.id} onClick={() => setDetailRow(r)} className={`hover:bg-brand-soft transition-colors cursor-pointer ${r.slaLevel === 'bad' ? 'bg-err-soft' : ''}`}>
                     {/* Req Date */}
@@ -415,7 +423,9 @@ export const PrInboxView: React.FC<PrInboxViewProps> = ({
                       </p>
                       <p className="text-[9.5px] text-ink-4">
                         {r.leadDays != null ? `${r.leadDays}d lead` : 'no lead'}
-                        {r.needBy ? ` · need-by ${fmtDate(r.needBy)}` : ''}
+                        {expLevel !== 'ok' && r.estimatedArrivalIfOrderedNow
+                          ? ` · ~${fmtDate(r.estimatedArrivalIfOrderedNow)} if ordered now`
+                          : ''}
                       </p>
                     </td>
 

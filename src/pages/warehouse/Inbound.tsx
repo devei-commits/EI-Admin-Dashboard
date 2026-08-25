@@ -163,6 +163,7 @@ interface GRNRecord {
   invoiceNo?: string;
   invoiceAmount?: number;
   grnDate?: string;
+  createdAt?: string | null;
   lineItems?: LineItem[];
   workflowSteps?: WorkflowStep[];
   noOfBoxes?: number | null;
@@ -215,6 +216,8 @@ function grnRecordToQualityInput(grn: GRNRecord, lineItem: LineItem | null): Qua
     assignedTo: grn.assignedTo,
     qcBy: grn.qcBy,
     grnDate: grn.grnDate ?? null,
+    // Drives the "GRN Date" column — when the record was created, not the shipment date.
+    createdAt: grn.createdAt ?? null,
     receivedDate: grn.receivedDate,
     expectedDate: grn.expectedDate ?? null,
     receiptSource: grn.receiptSource,
@@ -306,6 +309,11 @@ function toInboundRowInput(grn: GRNRecord, lineItem: LineItem | null): InboundGr
     qcStatus: grn.qcStatus,
     receiptSource: grn.receiptSource,
     purchaseOrderId: grn.purchaseOrderId,
+    // "GRN Date" (formatInboundShipmentLabel) prefers createdAt over grnDate/receivedDate/expectedDate
+    // — a fresh in-transit GRN has neither grnDate nor receivedDate yet, so omitting createdAt here
+    // fell through all the way to expectedDate (the ETA), making "GRN Date" and "SLA · ETA" show the
+    // identical estimated-arrival date instead of when the GRN was actually raised.
+    createdAt: grn.createdAt,
     expectedDate: grn.expectedDate,
     receivedDate: grn.receivedDate,
     grnDate: grn.grnDate,
@@ -1945,6 +1953,7 @@ function mapApiToGRNRecord(r: {
   invoiceNo?: string | null;
   invoiceAmount?: number | null;
   grnDate?: string | null;
+  createdAt?: string | null;
   noOfBoxes?: number | null;
   unitsPerBox?: number | null;
   lastBoxUnits?: number | null;
@@ -1980,6 +1989,7 @@ function mapApiToGRNRecord(r: {
     invoiceNo: r.invoiceNo ?? undefined,
     invoiceAmount: r.invoiceAmount ?? undefined,
     grnDate: r.grnDate ?? undefined,
+    createdAt: r.createdAt ?? null,
     noOfBoxes: r.noOfBoxes ?? undefined,
     unitsPerBox: r.unitsPerBox ?? undefined,
     lastBoxUnits: r.lastBoxUnits ?? undefined,
@@ -2454,7 +2464,7 @@ const WarehouseInbound = () => {
               <thead className="sticky top-0 z-20 [&_th]:bg-surface-2">
                 <tr className="bg-surface-2 border-b border-border">
                   <SortableTableTh
-                    label="Shipment"
+                    label="GRN Date"
                     column="shipment"
                     sortColumn={sortColumn}
                     sortDirection={sortDirection}

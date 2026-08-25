@@ -43,6 +43,8 @@ export interface GRNRecordFromApi {
   invoiceNo?: string | null;
   invoiceAmount?: number | null;
   grnDate?: string | null;
+  /** When the GRN record was created — drives the inbound "GRN Date" column. */
+  createdAt?: string | null;
   noOfBoxes?: number | null;
   unitsPerBox?: number | null;
   lastBoxUnits?: number | null;

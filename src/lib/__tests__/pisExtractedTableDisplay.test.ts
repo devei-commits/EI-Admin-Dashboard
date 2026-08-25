@@ -38,7 +38,7 @@ describe('pisExtractedTableDisplay', () => {
         sizeKg: 600,
         rmLines: [],
         pmLines: [],
-        sent: false,
+        sent: true,
       },
     ];
     const view = buildPisPlanStatusView(order, batches, new Map());
@@ -47,6 +47,61 @@ describe('pisExtractedTableDisplay', () => {
     expect(view.batchLines[0]?.units).toBe(3000);
     expect(view.batchLines[0]?.coveragePct).toBe(100);
     expect(view.batchLines[0]?.stage).toBe('PROCUREMENT');
+  });
+
+  // Opening the planning modal auto-seeds a draft placeholder for the next batch (sized to whatever
+  // is still unplanned) so the user has something to work on. That row is not a real, created batch —
+  // it must not appear as a batch line or count toward coverage, or "sent 1 of 1000, 100 planned" reads
+  // as "2 batches, fully covered" when only 100 units were ever actually committed.
+  it('treats an unsent draft placeholder batch as still-pending, not a created batch', () => {
+    const order = { id: '3685', orderQty: '1000 units', totalKg: '50 kg', orderDate: '2026-08-24' };
+    const batches: PlanningBatchAllRow[] = [
+      {
+        id: 1,
+        planningExtractedId: 3685,
+        sequence: 1,
+        batchCode: 'PE-3685-B1',
+        sizeKg: 5,
+        rmLines: [],
+        pmLines: [],
+        sent: true,
+      },
+      {
+        id: 2,
+        planningExtractedId: 3685,
+        sequence: 2,
+        batchCode: 'PE-3685-B2',
+        sizeKg: 45,
+        rmLines: [],
+        pmLines: [],
+        sent: false,
+      },
+    ];
+    const view = buildPisPlanStatusView(order, batches, new Map());
+    expect(view.kind).toBe('batches');
+    expect(view.batchLines).toHaveLength(1);
+    expect(view.batchLines[0]?.batchLabel).toBe('PE-3685-B1');
+    expect(view.batchLines[0]?.units).toBe(100);
+    expect(view.underCoveredUnits).toBe(900);
+  });
+
+  it('shows planning pending when the only batches are unsent drafts', () => {
+    const order = { id: '9', orderQty: '500 pcs', totalKg: '100 kg', orderDate: '2026-06-16' };
+    const batches: PlanningBatchAllRow[] = [
+      {
+        id: 5,
+        planningExtractedId: 9,
+        sequence: 1,
+        batchCode: 'PE-9-B1',
+        sizeKg: 100,
+        rmLines: [],
+        pmLines: [],
+        sent: false,
+      },
+    ];
+    const view = buildPisPlanStatusView(order, batches, new Map());
+    expect(view.kind).toBe('pending');
+    expect(view.underCoveredUnits).toBe(500);
   });
 
   it('maps production fg_ready to COMPLETED', () => {

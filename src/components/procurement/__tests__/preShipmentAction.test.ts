@@ -56,3 +56,43 @@ describe('preShipmentAction', () => {
     expect(preShipmentAction(po({ status: 'At Risk' }))).toBeNull();
   });
 });
+
+/* ── The plumbing that feeds preShipmentAction ─────────────────────────────
+ * DPO-023 sat at approval_status 'under_review' and its row still read "Submit for Review",
+ * because mapPurchaseOrderToDraftPO read the stage but never set it on the DraftPO it returned.
+ */
+import { mapPurchaseOrderToDraftPO } from '../../../pages/procurement/procurementDataMappers';
+import { mergePurchaseOrderRecords } from '../../../lib/purchaseOrderRecordsMerge';
+import type { PurchaseOrder } from '../../../types/procurement.types';
+
+const backendPo = (approvalStatus: string | null): PurchaseOrder =>
+  ({
+    id: 'PO-1307', vendorId: '', vendorName: 'V', poNumber: 'DPO-023', itemCount: 1, value: 349,
+    date: '2026-08-25', status: 'Draft', etaDays: 0, formData: {}, approvalStatus,
+  } as PurchaseOrder);
+
+describe('approval stage reaches the row action', () => {
+  it('carries the workflow stage onto the DraftPO', () => {
+    expect(mapPurchaseOrderToDraftPO(backendPo('under_review'), []).approvalStatus).toBe('under_review');
+  });
+
+  it('labels an under-review PO as awaiting review, not "Submit for Review"', () => {
+    const draft = mapPurchaseOrderToDraftPO(backendPo('under_review'), []);
+    const [record] = mergePurchaseOrderRecords([], [draft], []);
+    expect(preShipmentAction(record)?.label).toBe('Awaiting Review');
+  });
+
+  it('walks the full ladder as approval progresses', () => {
+    const labelFor = (stage: string | null) => {
+      const draft = mapPurchaseOrderToDraftPO(backendPo(stage), []);
+      const [record] = mergePurchaseOrderRecords([], [draft], []);
+      return preShipmentAction(record)?.label;
+    };
+    expect(labelFor(null)).toBe('Submit for Review');
+    expect(labelFor('under_review')).toBe('Awaiting Review');
+    expect(labelFor('under_approval')).toBe('Awaiting Approval');
+    expect(labelFor('approved')).toBe('Release to Vendor');
+    expect(labelFor('changes_requested')).toBe('Changes Requested');
+    expect(labelFor('rejected')).toBe('Rejected');
+  });
+});

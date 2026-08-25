@@ -46,8 +46,11 @@ export type InboundGrnReceiptMeta = {
 /** Cap stored photos per category so the GRN JSON row stays bounded. */
 export const GRN_RECEIPT_MAX_PHOTOS = 8;
 
-/** Minimum vehicle photos required by the step (front + goods). */
-export const GRN_RECEIPT_MIN_VEHICLE_PHOTOS = 2;
+/** Minimum vehicle photos required by the step. */
+export const GRN_RECEIPT_MIN_VEHICLE_PHOTOS = 1;
+
+/** Minimum document photos required by the step. */
+export const GRN_RECEIPT_MIN_DOCUMENT_PHOTOS = 1;
 
 export function emptyGrnReceiptMeta(): InboundGrnReceiptMeta {
   return {

@@ -165,11 +165,17 @@ export function buildPisPlanStatusView(
   prodByPlanningBatchId: Map<number, BatchRow>,
 ): PisPlanStatusView {
   const orderUnits = parseUnitCount(order.orderQty);
-  if (batches.length === 0) {
+  // Only batches actually sent to production are "created" batches. Opening the planning modal
+  // auto-seeds the next batch's row (sized to whatever units are still unplanned) so the user has
+  // something to work on — that row is a draft placeholder, not a commitment, and must not be shown
+  // as an equal, separately-created batch or counted toward coverage. Its units belong in
+  // underCoveredUnits (still pending) instead.
+  const sentBatches = batches.filter((b) => b.sent);
+  if (sentBatches.length === 0) {
     return { kind: 'pending', batchLines: [], summary: null, underCoveredUnits: orderUnits };
   }
 
-  const batchLines: PisPlanBatchLine[] = batches.map((batch) => {
+  const batchLines: PisPlanBatchLine[] = sentBatches.map((batch) => {
     const prod = batch.id > 0 ? prodByPlanningBatchId.get(batch.id) : undefined;
     const units = batchUnitsFromSize(order, batch.sizeKg);
     const coveragePct =

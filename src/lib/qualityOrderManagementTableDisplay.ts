@@ -2,8 +2,6 @@ import { displayInboundGrnNo, formatInboundQty } from './inboundGrnTableDisplay'
 import { buildQualityTableNavigation } from './qualityTableNavigation';
 import {
   inboundGrnLandedAt,
-  isInboundGrnCompleted,
-  isInboundGrnQcTested,
   isInboundGrnQuarantined,
   isInboundGrnSentToQc,
   isInboundGrnVerified,
@@ -20,6 +18,9 @@ export type QualityOrderManagementInput = {
   assignedTo?: string | null;
   qcBy?: string | null;
   grnDate?: string | null;
+  /** When the GRN record was created (not the shipment date) — same field the Inbound GRN Tracker's
+      "GRN Date" column prefers over grnDate/receivedDate/expectedDate for a fresh in-transit GRN. */
+  createdAt?: string | null;
   receivedDate?: string | null;
   expectedDate?: string | null;
   receiptSource?: string | null;
@@ -67,6 +68,10 @@ export type QualityOrderManagementRow = {
   slaIcon: string;
   slaLabel: string;
   slaTone: QualitySlaTone;
+  qcStatusLabel: string;
+  /** QC verdict already recorded (Passed/Rejected) — the row stays in this queue past this point
+      instead of disappearing, but opens read-only since the decision is already made. */
+  qcDecided: boolean;
   actionLabel: string;
   actionPrefix: string;
   sourceDetailHref: string;
@@ -224,6 +229,13 @@ export function buildQualitySlaView(
   return { icon: '✓', label: 'in time', tone: 'ok' };
 }
 
+function resolveQcDecision(grn: QualityOrderManagementInput): { label: string; decided: boolean } {
+  const qc = String(grn.qcStatus ?? '').trim();
+  if (qc === 'Passed' || qc === 'Pass') return { label: 'Passed', decided: true };
+  if (qc === 'Rejected' || qc === 'Fail' || qc === 'Failed') return { label: 'Rejected', decided: true };
+  return { label: qc || 'Pending', decided: false };
+}
+
 function resolvePriority(grn: QualityOrderManagementInput): QualityPriority {
   if (isQualityGrnMismatch(grn)) return 'High';
   return 'Medium';
@@ -262,6 +274,7 @@ export function buildQualityOrderManagementRow(
   const assignedTo = String(grn.assignedTo ?? '').trim();
   const approver = String(grn.qcBy ?? '').trim();
   const navigation = buildQualityTableNavigation(grn);
+  const qcDecision = resolveQcDecision(grn);
 
   return {
     id: grn.id,
@@ -285,8 +298,10 @@ export function buildQualityOrderManagementRow(
     slaIcon: sla.icon,
     slaLabel: sla.label,
     slaTone: sla.tone,
-    actionLabel: 'QC',
-    actionPrefix: '🧪',
+    qcStatusLabel: qcDecision.label,
+    qcDecided: qcDecision.decided,
+    actionLabel: qcDecision.decided ? 'View' : 'QC',
+    actionPrefix: qcDecision.decided ? '👁' : '🧪',
     sourceDetailHref: navigation.sourceDetailHref,
     sourceDetailLabel: navigation.sourceDetailLabel,
     itemMasterHref: navigation.itemMasterHref,
@@ -294,14 +309,13 @@ export function buildQualityOrderManagementRow(
   };
 }
 
-/** GRNs explicitly sent from warehouse to QC and not yet QC-passed. */
+/**
+ * GRNs explicitly sent from warehouse to QC. Stays visible after a verdict is recorded (or the GRN
+ * is later fully completed) rather than dropping the row — completed ones just show a decided
+ * status and open read-only, instead of only living on a separate history page.
+ */
 export function filterQualityOrderManagementQueue(grns: QualityOrderManagementInput[]): QualityOrderManagementInput[] {
-  return grns.filter((grn) => {
-    const inbound = toInboundRowInput(grn);
-    if (isInboundGrnCompleted(inbound)) return false;
-    if (isInboundGrnQcTested(inbound)) return false;
-    return isInboundGrnSentToQc(inbound);
-  });
+  return grns.filter((grn) => isInboundGrnSentToQc(toInboundRowInput(grn)));
 }
 
 export function buildQualityOrderManagementRows(grns: QualityOrderManagementInput[]): QualityOrderManagementRow[] {

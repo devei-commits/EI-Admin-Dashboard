@@ -1,7 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchGRNList, fetchGRNAssignableUsers } from '../../services/grn.service';
-import { filterInboundQcQueue, type QualityGrnQueueInput } from '../../lib/qualityGrnQueueDisplay';
+import {
+  filterInboundQcQueue,
+  type QualityGrnQueueInput,
+  type QualityGrnQueueRow,
+} from '../../lib/qualityGrnQueueDisplay';
 import {
   buildQualityOrderManagementRow,
   type QualityOrderManagementInput,
@@ -23,6 +27,7 @@ const InboundQcQueue: React.FC = () => {
   const [assigneeOptions, setAssigneeOptions] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeQcRow, setActiveQcRow] = useState<QualityOrderManagementRow | null>(null);
+  const [activeQcReadOnly, setActiveQcReadOnly] = useState(false);
 
   const loadQueue = useCallback(async (): Promise<void> => {
     setLoading(true);
@@ -55,7 +60,8 @@ const InboundQcQueue: React.FC = () => {
           <h1 className="text-2xl font-bold text-ink mt-1">Inbound QC Queue</h1>
           <p className="text-sm text-ink-2 mt-2">
             GRNs sent from warehouse via Send to QC. Use <strong>Complete QC</strong> to record the
-            inspection — results and verdict are saved against the GRN.
+            inspection — results and verdict are saved against the GRN. Rows stay here once decided,
+            marked <strong>QC Tested</strong>, so the record doesn't disappear from the queue.
           </p>
         </div>
         {loading ? (
@@ -65,9 +71,12 @@ const InboundQcQueue: React.FC = () => {
             grns={queue}
             emptyMessage="No GRNs awaiting inbound QC."
             actionLabel="Complete QC"
-            onAction={(grn) =>
-              setActiveQcRow(buildQualityOrderManagementRow(grn as QualityOrderManagementInput))
-            }
+            actionLabelFor={(row: QualityGrnQueueRow) => (row.qcDecided ? 'View' : undefined)}
+            onAction={(grn) => {
+              const decided = String(grn.qcStatus ?? '').trim();
+              setActiveQcReadOnly(decided === 'Passed' || decided === 'Pass' || decided === 'Rejected');
+              setActiveQcRow(buildQualityOrderManagementRow(grn as QualityOrderManagementInput));
+            }}
           />
         )}
 
@@ -75,6 +84,7 @@ const InboundQcQueue: React.FC = () => {
           <QualityCheckModal
             row={activeQcRow}
             assigneeOptions={assigneeOptions}
+            readOnly={activeQcReadOnly}
             onClose={() => setActiveQcRow(null)}
             onSaved={() => void loadQueue()}
             onThirdPartyReleased={() => navigate('/quality/third-party-tracking')}

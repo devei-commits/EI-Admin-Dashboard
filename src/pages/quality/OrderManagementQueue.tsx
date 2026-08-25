@@ -90,6 +90,7 @@ const OrderManagementQueue: React.FC = () => {
           <QualityCheckModal
             row={activeQcRow}
             assigneeOptions={assigneeOptions}
+            readOnly={activeQcRow.qcDecided}
             onClose={() => setActiveQcRow(null)}
             onSaved={() => void loadQueue()}
             onThirdPartyReleased={() => navigate('/quality/third-party-tracking')}

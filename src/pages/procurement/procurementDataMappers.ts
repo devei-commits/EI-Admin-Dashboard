@@ -321,6 +321,36 @@ export function connectingOverridesFromFormData(
 }
 
 /**
+ * Build the PO-list "Connecting" map: manual override ?? the PR's own required-by date (per line,
+ * falling back to the PR header) ?? the lead-time-derived date.
+ *
+ * The PR's required-by date wins over the lead-time estimate deliberately — a vendor with a
+ * genuinely-recorded 0-day lead time otherwise resolved to "PO release date + 0 = today", which
+ * silently threw away the date Planning actually released this requirement for (e.g. Planning asks
+ * for it by 08-Oct, the PO shows "today" instead). This mirrors the same fix already applied to the
+ * PR Inbox's "Expected Connecting" column — the two must show the same date across the lifecycle.
+ * Lead time still drives computeIssuedPoEtaFromLeadTimes's own etaDate/etaDays (used for At-Risk /
+ * SLA classification elsewhere), which is intentionally left unchanged by this function.
+ */
+export function connectingDateByItemFromLineDates(
+  lineDates: IssuedPoLineConnectingDate[],
+  request?: Pick<ProcurementRequest, 'dueDate' | 'itemDetails'> | null,
+): Record<string, string> | null {
+  const out: Record<string, string> = {};
+  for (const line of lineDates) {
+    const itemDetail = request?.itemDetails?.find(
+      (d) =>
+        normItemKeyForLead(d.itemCode) === normItemKeyForLead(line.itemCode) ||
+        (!!line.item && normItemKeyForLead(d.itemName) === normItemKeyForLead(line.item)),
+    );
+    const requiredByIso = normalizeDateOnlyString(itemDetail?.expectedDate ?? request?.dueDate ?? null) || null;
+    const date = line.overrideIso ?? requiredByIso ?? line.effectiveIso;
+    if (date) out[normConnectingDateKey(line.itemCode || line.item)] = date;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/**
  * Issued PO ETA: PO release date + max(per-line lead days from raw PO lines, draft, quote, PR item details).
  * When no lead exists anywhere, falls back to PR due date / PO expected shipment date.
  */
@@ -431,6 +461,19 @@ export function computeIssuedPoEtaFromLeadTimes(opts: {
       parseDateStringToLocalDate(request.dueDate) ??
       parseDateStringToLocalDate(linkedPO?.expectedShipmentDate) ??
       parseDateStringToLocalDate(linkedPO?.date);
+    // Backfill the per-line dates with this same fallback — they were all pushed as null above
+    // (no line had a resolvable lead time), so without this the aggregate ETA came out right while
+    // every line's own effectiveIso stayed null. Anything keying off lineDates (the PO list's
+    // Connecting column, the per-line detail editor) then showed "—" despite a real ETA existing.
+    if (etaDate) {
+      const fallbackIso = toIsoDateOnly(etaDate);
+      for (const line of lineDates) {
+        if (!line.effectiveIso) {
+          line.autoIso = fallbackIso;
+          line.effectiveIso = fallbackIso;
+        }
+      }
+    }
   }
 
   if (!etaDate) {
@@ -925,6 +968,10 @@ export function mapPurchaseOrderToDraftPO(po: PurchaseOrder, requests: Procureme
     vendor: po.vendorName ?? '',
     vendorId: '',
     status: approvalApproved ? 'Approved' : 'Pending Approval',
+    // Carry the workflow stage through: the row action reads it to label itself ("Awaiting
+    // Review" / "Awaiting Approval" / "Release to Vendor"). It was read here but never set on the
+    // DraftPO, so every row fell back to "Submit for Review" no matter how far approval had got.
+    approvalStatus: po.approvalStatus ?? null,
     createdDate: po.date ?? '',
     createdBy: 'Procurement',
     paymentTerms: po.paymentTerms ?? '',

@@ -12,6 +12,7 @@ export function ItemsInvolvedReleaseWeekSummary({
   onResetOverrides,
   hasOverrides,
   qtyInputStep,
+  onPickWeek,
 }: {
   rows: PlannedReleaseWeekSummary[];
   totalQty: number;
@@ -23,6 +24,11 @@ export function ItemsInvolvedReleaseWeekSummary({
   onResetOverrides: () => void;
   hasOverrides: boolean;
   qtyInputStep: number | 'any';
+  /**
+   * Fill this week's qty from its own requirement, like Pick on a batch line. Other weeks are
+   * untouched — zeroing them discarded their quantities and removed their rows from the summary.
+   */
+  onPickWeek?: (weekKey: string) => void;
 }): React.ReactElement {
   return (
     <div className="mb-4 rounded-xl border-2 border-brand-soft bg-brand-soft p-3 sm:p-4 shadow-sm">
@@ -59,7 +65,8 @@ export function ItemsInvolvedReleaseWeekSummary({
                   <th scope="col" className="text-right py-2 pr-3 font-bold whitespace-nowrap">
                     Qty ({pickUnitLabel})
                   </th>
-                  <th scope="col" className="text-right py-2 font-bold whitespace-nowrap">PRs</th>
+                  <th scope="col" className="text-right py-2 pr-3 font-bold whitespace-nowrap">PRs</th>
+                  {onPickWeek ? <th scope="col" className="text-right py-2 font-bold whitespace-nowrap" /> : null}
                 </tr>
               </thead>
               <tbody>
@@ -92,7 +99,19 @@ export function ItemsInvolvedReleaseWeekSummary({
                           }`}
                         />
                       </td>
-                      <td className="py-2.5 text-right text-ink-2 whitespace-nowrap">1</td>
+                      <td className="py-2.5 pr-3 text-right text-ink-2 whitespace-nowrap">1</td>
+                      {onPickWeek ? (
+                        <td className="py-2.5 text-right whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => onPickWeek(row.weekKey)}
+                            title={`Fill ${row.weekLabel} release qty from its requirement (required by ${row.expectedDate})`}
+                            className="px-2 py-1 rounded-lg border border-brand-soft bg-surface text-brand text-[11px] font-semibold hover:bg-brand-soft"
+                          >
+                            Pick
+                          </button>
+                        </td>
+                      ) : null}
                     </tr>
                   );
                 })}
@@ -103,7 +122,8 @@ export function ItemsInvolvedReleaseWeekSummary({
                     Total ({rows.length} week{rows.length === 1 ? '' : 's'})
                   </td>
                   <td className="py-2.5 pr-3 text-right whitespace-nowrap">{formatPickQty(totalQty)}</td>
-                  <td className="py-2.5 text-right whitespace-nowrap">{requestCount}</td>
+                  <td className="py-2.5 pr-3 text-right whitespace-nowrap">{requestCount}</td>
+                  {onPickWeek ? <td /> : null}
                 </tr>
               </tfoot>
             </table>

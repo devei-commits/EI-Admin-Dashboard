@@ -125,4 +125,65 @@ describe('mergePurchaseOrderRecords', () => {
     expect(merged[0].request).toBe(request);
     expect(merged[0].requestCode).toBe('PR-REQ-007');
   });
+
+  // PO-024 (DPO for PR-REQ-092): a Draft-status PO built entirely through this merge path (it never
+  // reaches computeIssuedPoEtaFromLeadTimes at all, since Draft/Accepted-status requests are filtered
+  // out of the issued-PO pipeline upstream). This function never set connectingDateByItem, so every
+  // Draft/Accepted PO's Connecting column showed "—" even when the PR's required-by date was known.
+  it('sets connectingDateByItem from the PR required-by date for a Draft PO row', () => {
+    const request: ProcurementRequest = {
+      id: '92',
+      code: 'PR-REQ-092',
+      type: 'PM',
+      priority: 'High',
+      status: 'PO Draft',
+      items: ['BBOLD empty plastic tubes 12ml with single ball and black cap'],
+      dueDate: '2026-10-08',
+      itemDetails: [
+        {
+          itemCode: '12PT01',
+          itemName: 'BBOLD empty plastic tubes 12ml with single ball and black cap',
+          reqQty: 200,
+          unit: 'PCS',
+          moq: '0.5',
+          packSize: '',
+          plannedPrice: 2.96,
+          estValue: 0,
+          leadTimeDays: 0,
+          expectedDate: '2026-10-08',
+        },
+      ],
+    };
+    const dpo: DraftPO = {
+      id: 'DPO-024',
+      dpoNumber: 'DPO-024',
+      requestId: '92',
+      requestCode: 'PR-REQ-092',
+      type: 'PM',
+      vendor: 'Adobe Systems Software Ireland Ltd',
+      vendorId: '',
+      status: 'Pending Approval',
+      createdDate: '2026-08-25',
+      createdBy: 'Procurement',
+      paymentTerms: '',
+      // Stale — computed as PO-creation-date + 0-day lead before the required-by fix existed.
+      expectedDelivery: '2026-08-25',
+      deliveryAddress: '',
+      vendorRating: 0,
+      alertMessage: '',
+      alertType: 'warning',
+      lineItems: [
+        { item: 'BBOLD empty plastic tubes 12ml with single ball and black cap', itemCode: '12PT01', type: 'PM', qty: '200', pricePerUnit: 2.96, gstPercent: 18, gstAmount: 0, lineTotal: 699 },
+      ],
+      subtotal: 592,
+      gstTotal: 107,
+      grandTotal: 699,
+      backendPoId: '1310',
+    };
+
+    const merged = mergePurchaseOrderRecords([], [dpo], [request]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].connectingDateByItem).not.toBeNull();
+    expect(merged[0].connectingDateByItem?.['12pt01']).toBe('2026-10-08');
+  });
 });

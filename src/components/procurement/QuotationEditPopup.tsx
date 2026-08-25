@@ -52,12 +52,28 @@ function asRecord(data: unknown): Record<string, unknown> | undefined {
   return data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : undefined;
 }
 
+/** Pull the leading number out of a formatted qty tier like "10 PCS" or "1,000 kg" (Indian locale commas). */
+function parseQtyTierToNumber(tier: string): number | null {
+  const match = tier.replace(/,/g, '').match(/[\d.]+/);
+  if (!match) return null;
+  const n = Number(match[0]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, vendors, vendorsLoading, onClose, onApproveSave }) => {
   const [vendorId, setVendorId] = useState('');
   const firstMoq =
     data.quantityToQuote != null ? String(data.quantityToQuote) : data.moqHint != null ? String(data.moqHint) : '1';
+  // The request can ask for multiple MOQ slabs (e.g. 1 / 10 / 0.5 / 50 PCS) — qtyTiers carries those
+  // formatted for display in the quote-requests list. Seed one band per slab so Procurement quotes
+  // a price against every MOQ that was actually asked for, not just the original total qty to quote.
+  const qtyTierMoqs = (data.qtyTiers ?? []).map(parseQtyTierToNumber).filter((n): n is number => n != null);
+  const initialBands: BandDraft[] =
+    qtyTierMoqs.length > 0
+      ? qtyTierMoqs.map((m) => ({ moqMin: String(m), moqMax: '', price: '' }))
+      : [{ moqMin: firstMoq, moqMax: '', price: '' }];
   // One or more MOQ→price bands (Masters-style tiers). First band's MOQ defaults to the qty to quote.
-  const [bands, setBands] = useState<BandDraft[]>([{ moqMin: firstMoq, moqMax: '', price: '' }]);
+  const [bands, setBands] = useState<BandDraft[]>(initialBands);
   const [leadTimeDays, setLeadTimeDays] = useState('');
   const [advancePct, setAdvancePct] = useState('');
   const [preShipmentPct, setPreShipmentPct] = useState('');
@@ -260,7 +276,11 @@ export const QuotationEditPopup: React.FC<QuotationEditPopupProps> = ({ data, ve
         <div className="flex items-center justify-between mb-1">
           <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide">
             MOQ price bands
-            {data.quantityToQuote != null && <span className="ml-1 font-normal normal-case text-ink-4">(first MOQ from qty to quote)</span>}
+            {qtyTierMoqs.length > 1 ? (
+              <span className="ml-1 font-normal normal-case text-ink-4">(from the MOQ slabs requested)</span>
+            ) : data.quantityToQuote != null ? (
+              <span className="ml-1 font-normal normal-case text-ink-4">(first MOQ from qty to quote)</span>
+            ) : null}
           </label>
           <button
             type="button"

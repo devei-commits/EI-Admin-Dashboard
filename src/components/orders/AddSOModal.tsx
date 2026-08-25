@@ -87,7 +87,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     sku: '',
     productName: '',
     pack: '',
-    orderedQty: 1000,
+    orderedQty: 0,
     unitPrice: 0,
     mrp: 0,
     bmrNo: '',
@@ -339,7 +339,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
   };
 
   const handleAddItem = () => {
-    setItems([...items, { sku: '', productName: '', pack: '', orderedQty: 1000, unitPrice: 0, mrp: 0, bmrNo: '', priceManual: false }]);
+    setItems([...items, { sku: '', productName: '', pack: '', orderedQty: 0, unitPrice: 0, mrp: 0, bmrNo: '', priceManual: false }]);
   };
 
   const handleItemChange = (index: number, field: string, value: any) => {
@@ -495,7 +495,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
     setCustomerCreditLimit('');
     applyStagedPaymentFields(DEFAULT_STAGED);
     setNotes('');
-    setItems([{ sku: '', productName: '', pack: '', orderedQty: 1000, unitPrice: 0, mrp: 0, bmrNo: '', priceManual: false }]);
+    setItems([{ sku: '', productName: '', pack: '', orderedQty: 0, unitPrice: 0, mrp: 0, bmrNo: '', priceManual: false }]);
     setSelectedCustomerId(null);
     setPriceHints({});
     setErrors([]);
@@ -778,7 +778,7 @@ export const AddSOModal: React.FC<AddSOModalProps> = ({ isOpen, onClose, onSave 
                       ) : null}
                     </div>
                     <div className="col-span-6 md:col-span-2">
-                      <Input label="Quantity" type="number" min={1} required value={item.orderedQty} onChange={(e) => handleItemChange(index, 'orderedQty', parseInt(e.target.value))} />
+                      <Input label="Quantity" type="number" min={1} required value={item.orderedQty} onChange={(e) => handleItemChange(index, 'orderedQty', Number.parseInt(e.target.value, 10) || 0)} />
                     </div>
                     <div className="col-span-6 md:col-span-2">
                       <Input

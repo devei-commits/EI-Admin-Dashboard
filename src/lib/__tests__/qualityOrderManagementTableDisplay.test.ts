@@ -64,6 +64,8 @@ describe('qualityOrderManagementTableDisplay', () => {
     expect(row.priorityDisplay).toBe('HIGH');
     expect(row.actionLabel).toBe('QC');
     expect(row.actionPrefix).toBe('🧪');
+    expect(row.qcStatusLabel).toBe('Pending');
+    expect(row.qcDecided).toBe(false);
     expect(row.sourceDetailHref).toBe('/warehouse/inbound?grn=1');
     expect(row.sourceDetailLabel).toBe('Warehouse GRN');
     expect(row.itemMasterHref).toBe('/raw-material?step=quality&rm=1000098');
@@ -119,6 +121,27 @@ describe('qualityOrderManagementTableDisplay', () => {
     expect(filterQualityOrderManagementQueue([sent, quarantined, routineQc, completed]).map((g) => g.id)).toEqual([
       '1',
     ]);
+  });
+
+  // A GRN whose QC has already been decided must stay in the queue (view-only) instead of
+  // vanishing the moment it's completed — the queue is the record, not just a to-do list.
+  it('keeps a QC-decided GRN in the queue instead of dropping it once completed', () => {
+    const pending = baseGrn({ workflowSteps: ['Sent to QC'] });
+    const decided = baseGrn({ id: '2', workflowSteps: ['Sent to QC'], qcStatus: 'Passed' });
+    const completed = baseGrn({
+      id: '3',
+      status: 'GRN Complete',
+      workflowSteps: ['Sent to QC'],
+      qcStatus: 'Passed',
+    });
+    const result = filterQualityOrderManagementQueue([pending, decided, completed]);
+    expect(result.map((g) => g.id)).toEqual(['1', '2', '3']);
+
+    const decidedRow = buildQualityOrderManagementRow(decided);
+    expect(decidedRow.qcStatusLabel).toBe('Passed');
+    expect(decidedRow.qcDecided).toBe(true);
+    expect(decidedRow.actionLabel).toBe('View');
+    expect(decidedRow.actionPrefix).toBe('👁');
   });
 
   it('sorts by priority', () => {

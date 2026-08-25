@@ -210,23 +210,55 @@ export const ProcTableCard: React.FC<{
 );
 
 /** Standard <thead>. Pass strings, or {label, align} for right/center columns. */
-export const ProcThead: React.FC<{ cols: (string | { label: string; align?: 'left' | 'center' | 'right' })[] }> = ({
-  cols,
-}) => (
+export type ProcTheadCol =
+  | string
+  | {
+      label: string;
+      align?: 'left' | 'center' | 'right';
+      /** Give a column a key to make it sortable; the caller owns the sort state. */
+      sortKey?: string;
+    };
+
+export const ProcThead: React.FC<{
+  cols: ProcTheadCol[];
+  sortKey?: string | null;
+  sortDir?: 'asc' | 'desc';
+  onSort?: (key: string) => void;
+}> = ({ cols, sortKey = null, sortDir = 'asc', onSort }) => (
   <thead className="sticky top-0 z-20">
     <tr className="bg-surface-2 border-b border-border [&_th]:bg-surface-2">
       {cols.map((c, i) => {
         const label = typeof c === 'string' ? c : c.label;
         const align = typeof c === 'string' ? 'left' : c.align ?? 'left';
+        const colKey = typeof c === 'string' ? undefined : c.sortKey;
+        const alignClass = align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : '';
+        const sortable = Boolean(colKey && onSort);
+        const active = sortable && sortKey === colKey;
         return (
           <th
             key={`${label}-${i}`}
             scope="col"
-            className={`px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap ${
-              align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : ''
-            }`}
+            aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : undefined}
+            className={`px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap ${alignClass}`}
           >
-            {label}
+            {sortable ? (
+              <button
+                type="button"
+                onClick={() => onSort!(colKey!)}
+                title={`Sort by ${label}`}
+                className={`inline-flex items-center gap-1 uppercase tracking-wide hover:text-ink ${
+                  active ? 'text-ink' : 'text-ink-3'
+                } ${align === 'right' ? 'flex-row-reverse' : ''}`}
+              >
+                {label}
+                {/* Reserve the arrow slot on every sortable column so headers don't jump on sort. */}
+                <span aria-hidden className={active ? 'opacity-100' : 'opacity-30'}>
+                  {active ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}
+                </span>
+              </button>
+            ) : (
+              label
+            )}
           </th>
         );
       })}

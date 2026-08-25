@@ -45,6 +45,8 @@ export type InboundGrnRowInput = {
   expectedDate?: string | null;
   receivedDate?: string | null;
   grnDate?: string | null;
+  /** When the GRN record was created. Always present, unlike grnDate. */
+  createdAt?: string | null;
   locationZone?: string | null;
   locationPrefix?: string | null;
   assignedTo?: string | null;
@@ -519,7 +521,7 @@ export function buildInboundGrnTableRowView(
   const action = inboundGrnActionView(grn);
 
   return {
-    shipmentDate: formatInboundTableDate(grn.grnDate ?? grn.receivedDate ?? grn.expectedDate),
+    shipmentDate: formatInboundShipmentLabel(grn),
     grnNo: displayInboundGrnNo(grn.grnNo),
     warehouse: resolveInboundWarehouseCode(grn, grn.lineItem),
     storagePrimary: storage.primary,
@@ -554,8 +556,16 @@ export function inboundGrnActionLabel(status: string | null | undefined): string
   return inboundGrnActionView({ grnNo: '', status }).label;
 }
 
+/**
+ * The column shows when the GRN was CREATED.
+ *
+ * It previously read `grnDate ?? receivedDate ?? expectedDate`. Most GRNs carry no `grn_date` at
+ * all, so the cell fell through to the EXPECTED date — a future date — and read as though the GRN
+ * had been raised then. `createdAt` is stamped on every row, so it is authoritative; the old chain
+ * remains as a fallback for any row that predates it being exposed.
+ */
 export function formatInboundShipmentLabel(grn: InboundGrnRowInput): string {
-  return formatInboundTableDate(grn.grnDate ?? grn.receivedDate ?? grn.expectedDate);
+  return formatInboundTableDate(grn.createdAt ?? grn.grnDate ?? grn.receivedDate ?? grn.expectedDate);
 }
 
 /**
@@ -567,7 +577,8 @@ export function formatInboundShipmentLabel(grn: InboundGrnRowInput): string {
  * Undated rows collapse to 0 and settle at the old end of the list.
  */
 export function inboundShipmentSortValue(grn: InboundGrnRowInput): number {
-  const raw = grn.grnDate ?? grn.receivedDate ?? grn.expectedDate;
+  // Same field precedence as the label it sorts.
+  const raw = grn.createdAt ?? grn.grnDate ?? grn.receivedDate ?? grn.expectedDate;
   if (!raw) return 0;
   const t = new Date(raw).getTime();
   return Number.isNaN(t) ? 0 : t;

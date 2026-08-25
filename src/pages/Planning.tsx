@@ -69,6 +69,7 @@ import {
   fetchBatchById,
   addOneBatchFromMaster,
   updateBatch as updatePlanningBatch,
+  confirmBatchBom,
   deletePlanningBatch,
   fetchAllBatches,
   fetchItemsInvolved,
@@ -3366,10 +3367,10 @@ const Planning = () => {
   /** Keeps working batch when opening Plan Batches via Batches tab → Edit batch. */
   const editBatchPreserveIdRef = useRef<number | null>(null);
   const customBatchesRef = useRef(customBatches);
+  /** True once the working batch plan has unsaved local edits — protects it from being clobbered by
+      a background refetch. Batch qty/size only ever reaches the server on explicit Send batch (see
+      performSendBatchFromPlanModal) or Save BOM; there is no autosave while composing. */
   const batchPlanDirtyRef = useRef(false);
-  const persistBatchPlanRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const persistBatchPlanGenerationRef = useRef(0);
-  const schedulePersistBatchPlanRef = useRef<() => void>(() => {});
   const buildBomRmPmLinesForSaveRef = useRef<() => { rmLines: BOMRmLine[]; pmLines: BOMPmLine[] }>(() => ({
     rmLines: [],
     pmLines: [],
@@ -3414,11 +3415,6 @@ const Planning = () => {
 
   // Batch-first: ensure at least one batch and set selected batch; sync customBatches from planningBatches
   const addedOneBatchRef = useRef(false);
-  // Auto-increment next batch when opening the modal: if every existing batch has already been sent
-  // and there are still units to allot, create the next (incremented) batch so the popup shows e.g.
-  // B-02 instead of staying on the last sent B-01. Gate with a ref so it runs at most once per
-  // modal-open cycle (reset when the modal closes).
-  const autoAddedNextBatchRef = useRef(false);
   useEffect(() => {
     if (!planBatchesModalOpen || !planningIdForBatch) return;
     if (planningBatches.length === 0) {
@@ -3463,51 +3459,11 @@ const Planning = () => {
     if (planningBatches.length > 0) {
       addedOneBatchRef.current = true;
 
-      // Auto-increment: if every batch in the list has been sent AND the order still has pending
-      // units, kick off an add-one so the user lands on the next (unsent) batch. Only fires if the
-      // query has fully resolved, and at most once per modal session. The backend add-one endpoint
-      // already validates LAST_BATCH_NOT_SENT, so this is safe.
-      if (
-        !isEditingExistingBatch &&
-        planningBatchesLoaded &&
-        planningBatchesFetched &&
-        !autoAddedNextBatchRef.current
-      ) {
-        const sentIdx = selectedSOForBatch?.sentBatchIndices ?? [];
-        const bufferIdx = new Set((selectedSOForBatch?.bufferBatchIndices ?? []).map(Number));
-        const allSent = planningBatches.every((_, i) => sentIdx.includes(i));
-        const oq = (parseQtyLabelInt(selectedSOForBatch?.orderQty) || 0);
-        const tk = parseFloat(selectedSOForBatch?.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
-        const kpu = oq > 0 && tk > 0 ? tk / oq : 0;
-        // SO remaining excludes buffer / over-production batches (they sit above the SO qty).
-        const sentKg = (planningBatches as PlanningBatchRow[]).reduce(
-          (s, b, i) => (sentIdx.includes(i) && !bufferIdx.has(i) ? s + (Number(b.sizeKg) || 0) : s),
-          0
-        );
-        const pendingUnits = kpu > 0 ? Math.max(0, (tk - sentKg) / kpu) : 0;
-        if (allSent && pendingUnits > 0) {
-          autoAddedNextBatchRef.current = true;
-          addOneBatchFromMaster(planningIdForBatch)
-            .then((newBatch) => {
-              if (newBatch) {
-                mergePlanningBatchIntoListCache(queryClient, planningIdForBatch, newBatch);
-                queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
-                setSelectedBatchId(Number(newBatch.id));
-                // Seed the new (SO) batch's Preview qty to the remaining SO units (release 100 → next batch 900).
-                setFeasibilityPreviewQty(Math.round(pendingUnits));
-                lastAppliedPreviewQtyRef.current = null;
-              } else {
-                autoAddedNextBatchRef.current = false;
-              }
-            })
-            .catch(() => {
-              autoAddedNextBatchRef.current = false;
-              queryClient.invalidateQueries({ queryKey: ['planning-batches', planningIdForBatch] });
-            });
-          return;
-        }
-      }
-
+      // A next batch is NOT auto-created here even when every existing batch is sent and units
+      // remain — creating it eagerly left an unsent, unconfirmed placeholder batch sitting in the
+      // plan that looked like a real commitment (and could even race the send flow into locking
+      // its own size — see performSendBatchFromPlanModal). The user now creates the next batch
+      // explicitly with + Add in the Working batch bar, when they're actually ready to plan it.
       const first = planningBatches[0] as PlanningBatchRow;
       if (
         !isEditingExistingBatch &&
@@ -3546,7 +3502,6 @@ const Planning = () => {
   useEffect(() => {
     if (!planBatchesModalOpen) {
       addedOneBatchRef.current = false;
-      autoAddedNextBatchRef.current = false;
     }
   }, [planBatchesModalOpen]);
 
@@ -3701,7 +3656,11 @@ const Planning = () => {
     planBatchesModalOpen,
   ]);
 
-  // One-time preview seed when the Plan Batches modal opens (Edit batch may set this earlier).
+  // One-time preview reset when the Plan Batches modal opens for a NEW batch (Edit batch sets its
+  // own value earlier via previewInitializedForModalRef, e.g. handleEditBatchFromTab, and this is
+  // skipped for that case). Preview qty starts at 0 rather than auto-filling to the SO's remaining
+  // units — auto-filling meant every fresh batch opened already "planned" for the full order qty
+  // before the user typed anything, which silently committed a qty they never chose.
   useEffect(() => {
     if (!planBatchesModalOpen || !selectedSOForBatch) {
       if (!planBatchesModalOpen) previewInitializedForModalRef.current = false;
@@ -3709,16 +3668,9 @@ const Planning = () => {
     }
     if (previewInitializedForModalRef.current) return;
     previewInitializedForModalRef.current = true;
-    const orderQtyNum = (parseQtyLabelInt(selectedSOForBatch.orderQty) || 0);
-    const totalKgNum = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
-    const remainingKg = Math.max(0, totalKgNum - sentKgForPlanBatches);
-    if (orderQtyNum <= 0 || totalKgNum <= 0) return;
-    const kgPerUnit = totalKgNum / orderQtyNum;
-    if (remainingKg <= 1e-6) return;
-    const remainingUnits = kgPerUnit > 0 ? Math.round(remainingKg / kgPerUnit) : orderQtyNum;
-    setFeasibilityPreviewQty(Math.max(0, remainingUnits));
+    setFeasibilityPreviewQty(0);
     lastAppliedPreviewQtyRef.current = null;
-  }, [planBatchesModalOpen, selectedSOForBatch?.id, selectedSOForBatch?.orderQty, selectedSOForBatch?.totalKg, sentKgForPlanBatches]);
+  }, [planBatchesModalOpen, selectedSOForBatch?.id]);
 
   const kgPerUnitForPlanBatches = useMemo(() => {
     const orderQtyNum = (parseQtyLabelInt(selectedSOForBatch?.orderQty) || 0);
@@ -3837,6 +3789,13 @@ const Planning = () => {
     if (!canSyncPreviewToIndex(targetIdx)) return;
 
     const nextUnits = Math.max(0, Math.floor(feasibilityPreviewQty || 0));
+    // An empty / zero preview qty means "not specified", NOT "make this batch zero units". Writing
+    // it through silently wiped a planned batch's size in the working state: with the preview box
+    // blank on open, this targeted the first unsent batch and set it to 0 kg, so every derived
+    // figure in the modal (units to be made, pending to plan, remaining to allocate) was short by
+    // that batch. The DB still held the real size, which is why the Batches tab looked correct
+    // while this screen did not.
+    if (nextUnits <= 0) return;
     if (lastAppliedPreviewQtyRef.current === nextUnits) return;
     lastAppliedPreviewQtyRef.current = nextUnits;
     const currentUnits = Math.round((customBatches[targetIdx]?.sizeKg || 0) / kgPerUnitForPlanBatches);
@@ -3851,11 +3810,12 @@ const Planning = () => {
         if (Math.abs(currentKg - newKg) < 1e-6) return prev;
         return prev.map((b, i) => (i === targetIdx ? { ...b, sizeKg: newKg } : b));
       });
+      // Local-only: do NOT auto-persist here. This runs on every preview-qty edit while the user is
+      // still composing the batch plan, so scheduling a PATCH from it fired a save the moment the
+      // modal opened (preview qty reset → this effect → autosave), before the user asked to send
+      // anything. Persistence now only happens on the explicit Send batch action.
       if (getPlanningBatchEditableAtIndex(targetIdx)) {
         batchPlanDirtyRef.current = true;
-        if (!isEditingExistingBatch) {
-          schedulePersistBatchPlanRef.current();
-        }
       }
       setExpandedBatchIndex(targetIdx);
     } catch (e) {
@@ -3883,10 +3843,6 @@ const Planning = () => {
       editBatchPreserveIdRef.current = null;
       setEditExistingBatchId(null);
       batchPlanDirtyRef.current = false;
-      if (persistBatchPlanRef.current) {
-        clearTimeout(persistBatchPlanRef.current);
-        persistBatchPlanRef.current = null;
-      }
     }
   }, [planBatchesModalOpen, selectedSOForBatch?.id]);
 
@@ -4387,6 +4343,25 @@ const Planning = () => {
     ]
   );
 
+  /**
+   * The working batch's OWN confirmation timestamp — confirmation is per batch (each batch carries
+   * its own rm/pmLines and they can diverge), so a new or just-edited batch must show as unconfirmed
+   * even though an earlier batch on the same SO was already signed off. `selectedSOForBatch.bomConfirmedAt`
+   * is SO-wide and stays set forever once any one batch has ever been confirmed — using it to drive the
+   * BOM Editor's Confirm/Confirmed toggle made every later batch open already "confirmed".
+   */
+  const workingBatchBomConfirmedAt = useMemo((): string | null => {
+    if (selectedBatchId == null) return null;
+    const row = (planningBatches as PlanningBatchRow[]).find((b) => Number(b.id) === Number(selectedBatchId));
+    return row?.bomConfirmedAt ?? null;
+  }, [planningBatches, selectedBatchId]);
+
+  /** Is THIS specific working batch's BOM confirmed? Falls back to the SO-wide flag only when no
+      batch exists yet to attach a per-batch confirmation to (BOM Editor before any batch is created). */
+  const isWorkingBatchBomConfirmed = selectedBatchId != null
+    ? Boolean(workingBatchBomConfirmedAt)
+    : canSendToProduction;
+
   // Feasibility summary: max units we can make (bottleneck by RM and PM)
   const feasibilityRmCoversUnits = feasibilityRmRows.length > 0 ? Math.min(...feasibilityRmRows.map((r) => r.maxUnits)) : 0;
   const feasibilityPmCoversUnits = feasibilityPmRows.length > 0 ? Math.min(...feasibilityPmRows.map((r) => r.maxUnits)) : 0;
@@ -4430,51 +4405,6 @@ const Planning = () => {
     [isEditingExistingBatch, isSelectedBatchEditable, canConfirmBomPerBatch, selectedBatchHasBomLines]
   );
 
-  const schedulePersistBatchPlan = useCallback(() => {
-    if (!selectedSOForBatch) return;
-    // Edit batch: qty/size persists only on explicit Send batch (or Save BOM), not on preview edits.
-    if (isEditingExistingBatch) return;
-    batchPlanDirtyRef.current = true;
-    if (persistBatchPlanRef.current) {
-      clearTimeout(persistBatchPlanRef.current);
-    }
-    const generation = ++persistBatchPlanGenerationRef.current;
-    persistBatchPlanRef.current = setTimeout(() => {
-      void (async () => {
-        if (generation !== persistBatchPlanGenerationRef.current) return;
-        const batches = customBatchesRef.current;
-        try {
-          await updatePlanningExtracted(selectedSOForBatch.id, {
-            batchCount: batches.length,
-            customBatches: batches.length > 0 ? batches : undefined,
-          });
-          const saved = await createOrUpdatePlanningBatches(selectedSOForBatch.id, batches);
-          if (generation !== persistBatchPlanGenerationRef.current) return;
-          if (Array.isArray(saved) && saved.length > 0) {
-            queryClient.setQueryData(['planning-batches', selectedSOForBatch.id], saved);
-          }
-          queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
-          queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
-          queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
-          if (generation === persistBatchPlanGenerationRef.current) {
-            batchPlanDirtyRef.current = false;
-          }
-        } catch (e) {
-          addToast('error', e instanceof Error ? e.message : 'Could not save batch plan');
-        }
-      })();
-    }, 500);
-  }, [
-    selectedSOForBatch,
-    queryClient,
-    addToast,
-    isEditingExistingBatch,
-  ]);
-
-  useEffect(() => {
-    schedulePersistBatchPlanRef.current = schedulePersistBatchPlan;
-  }, [schedulePersistBatchPlan]);
-
   const updateBatchUnitsAtPlanIndex = useCallback(
     (batchIndex: number, units: number) => {
       if (isEditingExistingBatch && batchIndex !== selectedBatchPlanIndex) return;
@@ -4488,8 +4418,10 @@ const Planning = () => {
         if (batchIndex < 0 || batchIndex >= prev.length) return prev;
         return prev.map((b, i) => (i === batchIndex ? { ...b, sizeKg } : b));
       });
+      // Local-only edit — marks the plan dirty (protects it from a background refetch) but does not
+      // persist. Batch qty/size only reaches the server on explicit Send batch or Save BOM.
       if (!isEditingExistingBatch) {
-        schedulePersistBatchPlan();
+        batchPlanDirtyRef.current = true;
       }
       if (batchIndex === selectedBatchPlanIndex) {
         setFeasibilityPreviewQty(Math.max(0, Math.floor(units)));
@@ -4501,7 +4433,6 @@ const Planning = () => {
       selectedSOForBatch?.totalKg,
       selectedBatchPlanIndex,
       getPlanningBatchEditableAtIndex,
-      schedulePersistBatchPlan,
       isEditingExistingBatch,
     ]
   );
@@ -6782,6 +6713,15 @@ const Planning = () => {
           addToast('error', 'Failed to save BOM for this batch');
           return;
         }
+        // Confirmation is per batch — saving rm/pmLines above does not itself confirm them (a plain
+        // save must still be re-signed-off). Without this, the working batch's own bomConfirmedAt
+        // stayed null forever and the SO-wide flag (set below) made every batch look confirmed.
+        try {
+          await confirmBatchBom(selectedSOForBatch.id, selectedBatchId, true);
+        } catch (e: unknown) {
+          addToast('error', e instanceof Error ? e.message : "Failed to confirm this batch's BOM");
+          return;
+        }
         if (customBatches.length > 0 && !isEditingExistingBatch) {
           await createOrUpdatePlanningBatches(selectedSOForBatch.id, customBatches);
         }
@@ -6896,11 +6836,23 @@ const Planning = () => {
     if (!selectedSOForBatch) {
       throw new Error('No sales order selected');
     }
-    if (!canSendToProduction) {
-      throw new Error('Confirm BOM in BOM Editor before sending to Production');
-    }
     if (!Number.isFinite(batchIndex) || batchIndex < 0) {
       throw new Error('Invalid batch');
+    }
+    // BOM confirmation is per batch — a batch that has never been confirmed (a freshly created one,
+    // or one whose formula was just edited, which clears its own confirmation) must not be sendable
+    // just because an earlier batch on this SO was confirmed.
+    const bomConfirmedForThisBatch =
+      batchIndex === selectedBatchPlanIndex
+        ? isWorkingBatchBomConfirmed
+        : Boolean(
+            (planningBatches as PlanningBatchRow[]).find((b) => Number(b.sequence) === batchIndex + 1)
+              ?.bomConfirmedAt
+          );
+    if (!bomConfirmedForThisBatch) {
+      throw new Error(
+        `Confirm BOM for B-${String(batchIndex + 1).padStart(2, '0')} in BOM Editor before sending it to Production.`
+      );
     }
     let batchesBase = customBatches;
     if (
@@ -6934,17 +6886,11 @@ const Planning = () => {
       setCustomBatches(batchesForSend);
     }
 
-    const mergedSent = [...new Set([...(selectedSOForBatch.sentBatchIndices ?? []), batchIndex])].sort((a, b) => a - b);
-    await updatePlanningExtracted(selectedSOForBatch.id, {
-      batchCount: batchesForSend.length || parseInt(numBatches, 10) || 0,
-      batchSizeKg: batchesForSend.length > 0 ? batchesForSend[0].sizeKg : (parseFloat(batchSizeKg) || 500),
-      plannedStartDate: plannedStartDate || undefined,
-      productionLine: productionLine || undefined,
-      bomStatus: 'Production Released',
-      customBatches: batchesForSend.length > 0 ? batchesForSend : undefined,
-      sentBatchIndices: mergedSent,
-    });
-
+    // Set the batch's real size BEFORE marking it sent. The backend locks a batch's size the moment
+    // its index appears in sent_batch_indices (assertSentBatchSizesUnchanged) — sending first and
+    // sizing second raced against that lock: the size-save landed one request too late and got
+    // rejected as SENT_BATCH_SIZE_LOCKED, even though it was the very save that was supposed to give
+    // the batch its sent-to size in the first place.
     if (batchesForSend.length > 0) {
       if (isEditingExistingBatch && selectedBatchId != null) {
         const sizeKg = Number(batchesForSend[batchIndex]?.sizeKg);
@@ -6963,7 +6909,26 @@ const Planning = () => {
       }
     }
 
+    const mergedSent = [...new Set([...(selectedSOForBatch.sentBatchIndices ?? []), batchIndex])].sort((a, b) => a - b);
+    await updatePlanningExtracted(selectedSOForBatch.id, {
+      batchCount: batchesForSend.length || parseInt(numBatches, 10) || 0,
+      batchSizeKg: batchesForSend.length > 0 ? batchesForSend[0].sizeKg : (parseFloat(batchSizeKg) || 500),
+      plannedStartDate: plannedStartDate || undefined,
+      productionLine: productionLine || undefined,
+      bomStatus: 'Production Released',
+      customBatches: batchesForSend.length > 0 ? batchesForSend : undefined,
+      sentBatchIndices: mergedSent,
+    });
+
     await syncBatchesFromPlanning().catch(() => { /* non-fatal — Production page also syncs on load */ });
+
+    // The plan just landed on the server (sizes saved, batch marked sent) — it's no longer "unsaved
+    // local edits" to protect from a refetch. Leaving this stuck true meant the customBatches↔server
+    // resync (guarded on !batchPlanDirtyRef.current) never ran again for the rest of the modal
+    // session, so any batch created afterwards (e.g. via + Add) never got its real saved size into
+    // customBatches — the "quantity history" table showed 0 kg for it despite the DB having the
+    // correct value.
+    batchPlanDirtyRef.current = false;
 
     queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
     queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
@@ -7013,6 +6978,11 @@ const Planning = () => {
         });
       } else {
         const { batch } = sendToProductionConfirm;
+        if (!batch.bomConfirmedAt) {
+          throw new Error(
+            `Confirm BOM for ${batch.batchCode ?? `B-${String(batch.sequence).padStart(2, '0')}`} in BOM Editor before sending it to Production.`
+          );
+        }
         const current = (batch as PlanningBatchAllRow).sentBatchIndices ?? [];
         const idx = Number(batch.sequence) - 1;
         if (current.includes(idx)) {
@@ -9217,6 +9187,27 @@ const Planning = () => {
             qty: total > 0 ? formatReleasePickQty(total).replace(/,/g, '') : '',
           }));
         };
+        /**
+         * Fill THIS week's release qty from its own requirement, exactly as Pick does on a batch
+         * line. Other weeks are left untouched — an earlier version zeroed them to "release only
+         * this week", which silently discarded the other weeks' quantities (and dropped their rows
+         * from the summary entirely, since zero-qty weeks are not listed).
+         */
+        const handlePickWeek = (weekKey: string) => {
+          const target = releaseWeekSummary.find((row) => row.weekKey === weekKey);
+          if (!target) return;
+          const nextOverrides: Record<string, string> = {
+            ...releaseWeekQtyOverrides,
+            [weekKey]: formatReleasePickQty(target.qty).replace(/,/g, ''),
+          };
+          setReleaseWeekQtyOverrides(nextOverrides);
+          const merged = mergeWeekQtyOverrides(releaseWeekSummary, nextOverrides);
+          const total = merged.reduce((sum, row) => sum + row.qty, 0);
+          setReleaseToPlanningForm((f) => ({
+            ...f,
+            qty: total > 0 ? formatReleasePickQty(total).replace(/,/g, '') : '',
+          }));
+        };
         const resetReleaseWeekQtyOverrides = () => {
           setReleaseWeekQtyOverrides({});
           const total = releaseWeekSummary.reduce((sum, row) => sum + row.qty, 0);
@@ -9412,6 +9403,7 @@ const Planning = () => {
                     onResetOverrides={resetReleaseWeekQtyOverrides}
                     hasOverrides={hasWeekQtyOverrides}
                     qtyInputStep={releaseWeekQtyInputStep}
+                    onPickWeek={handlePickWeek}
                   />
                 ) : null}
                 <div className={`grid grid-cols-1 gap-4 xl:gap-5 ${isQuotationOnlyModal ? 'max-w-xl mx-auto' : 'xl:grid-cols-2'}`}>
@@ -9826,8 +9818,28 @@ const Planning = () => {
                       <div>
                         <label className="block text-[11px] font-bold text-ink-3 uppercase tracking-wide mb-1">Lead time</label>
                         <div className="py-1.5 text-sm font-medium text-ink">{releaseToPlanningForm.leadTimeDays} days</div>
+                        {/* The expected date drives the PR's required-by and is carried onto the PO,
+                            so it is shown here next to lead time and payment terms rather than only
+                            on the batch lines above. */}
+                        <div className="mt-1 rounded-md border border-border bg-surface-3 px-2 py-1">
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-ink-3">Expected date</p>
+                          {displayWeekRows.length > 0 ? (
+                            <ul className="mt-0.5 space-y-0.5">
+                              {displayWeekRows.map((w) => (
+                                <li key={w.weekKey} className="text-[11px] text-ink-2 tabular-nums">
+                                  <span className="font-semibold text-ink">{w.expectedDate}</span>
+                                  <span className="text-ink-4"> · {w.weekLabel}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-[11px] text-ink-2">
+                              {releaseToPlanningForm.expectedDate || 'Set per batch line above'}
+                            </p>
+                          )}
+                        </div>
                         <p className="text-[10px] text-ink-3 mt-1 leading-snug">
-                          Expected date is set per batch line above (or defaults from lead time when no batch split).
+                          Carried to the procurement request and its PO as the required-by date.
                         </p>
                       </div>
                     </div>
@@ -10089,7 +10101,16 @@ const Planning = () => {
                 batch.planningExtractedId
               )
             }
-            onSendToProduction={() => setSendToProductionConfirm({ source: 'batch-detail', batch })}
+            onSendToProduction={() => {
+              if (!batch.bomConfirmedAt) {
+                addToast(
+                  'error',
+                  `Confirm BOM for ${batch.batchCode ?? `B-${String(batch.sequence).padStart(2, '0')}`} in BOM Editor before sending it to Production.`
+                );
+                return;
+              }
+              setSendToProductionConfirm({ source: 'batch-detail', batch });
+            }}
             onReserveItems={handlePlanningReserve}
             onUnreserveItems={handlePlanningUnreserve}
             reservedForBatchByCode={reservedForBatchByCode}
@@ -10547,7 +10568,7 @@ const Planning = () => {
                       if (!selectedSOForBatch) return;
                       const newIndex = planningBatches.length;
                       try {
-                        const newBatch = await addOneBatchFromMaster(planningIdForBatch);
+                        const newBatch = await addOneBatchFromMaster(planningIdForBatch, true);
                         if (!newBatch) {
                           addToast('error', 'Failed to add buffer batch');
                           return;
@@ -10720,11 +10741,18 @@ const Planning = () => {
                       <button
                         type="button"
                         disabled={
-                          !canSendToProduction ||
+                          !isWorkingBatchBomConfirmed ||
                           !canSendSelectedBatchPlan ||
                           isSelectedBatchAlreadySent
                         }
                         onClick={() => {
+                          if (!isWorkingBatchBomConfirmed) {
+                            addToast(
+                              'error',
+                              `Confirm BOM for ${selectedBatchCodeLabel || 'this batch'} in BOM Editor before sending it to Production.`
+                            );
+                            return;
+                          }
                           if (selectedBatchPlanIndex >= 0) {
                             setSendToProductionConfirm({ source: 'plan-modal', batchIndex: selectedBatchPlanIndex });
                           }
@@ -10733,8 +10761,8 @@ const Planning = () => {
                         title={
                           isSelectedBatchAlreadySent
                             ? 'Already sent — use Save size to update qty on this batch'
-                            : !canSendToProduction
-                            ? 'Add RM/PM lines in BOM Editor (or save BOM) before sending'
+                            : !isWorkingBatchBomConfirmed
+                            ? 'Confirm BOM for this batch in BOM Editor before sending'
                             : !canSendSelectedBatchPlan
                               ? 'Choose a working batch in the bar above'
                               : 'Send this working batch to Production (saves preview qty and BOM)'
@@ -11115,7 +11143,14 @@ const Planning = () => {
                                 const seq = Number(row.sequence) || displayIdx + 1;
                                 const sent = selectedSOForBatch?.sentBatchIndices ?? [];
                                 const isSent = sent.includes(originalIndex);
-                                const sk = Number(customBatches[originalIndex]?.sizeKg ?? row.sizeKg) || 0;
+                                // This is a "quantity history" table — show the saved, authoritative
+                                // size from the server first. `customBatches` is the in-progress local
+                                // edit buffer and can go stale (e.g. it stops resyncing from the server
+                                // once the plan has any unsaved edit — see batchPlanDirtyRef — so a
+                                // freshly created batch's real size never lands in it). Previously this
+                                // preferred customBatches unconditionally, which showed a brand-new
+                                // batch as "0 kg" even though it was created correctly (e.g. 35 kg).
+                                const sk = Number(row.sizeKg ?? customBatches[originalIndex]?.sizeKg) || 0;
                                 const u =
                                   kgPerUnitForPlanBatches > 0 ? sk / kgPerUnitForPlanBatches : sk;
                                 return (
@@ -11354,7 +11389,7 @@ const Planning = () => {
                       </span>
                     ) : editModeShowSaveBom ? (
                       <div className="flex flex-wrap items-center gap-2">
-                        {canSendToProduction ? (
+                        {isWorkingBatchBomConfirmed ? (
                           <span className="px-4 py-2 rounded-lg text-sm font-semibold text-ok bg-ok-soft border border-ok-soft">
                             BOM ready
                           </span>
@@ -11371,7 +11406,7 @@ const Planning = () => {
                           Updates {selectedBatchCodeLabel || 'this batch'} only
                         </span>
                       </div>
-                    ) : !canSendToProduction ? (
+                    ) : !isWorkingBatchBomConfirmed ? (
                       (() => {
                         const allLinesSgOk = bomFormula.every((item) => {
                           const sg = Number(item.specificGravity);

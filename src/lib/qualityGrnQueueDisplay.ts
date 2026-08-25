@@ -35,6 +35,9 @@ export type QualityGrnQueueRow = {
   itemLabel: string;
   statusLabel: string;
   qcStatus: string;
+  /** QC verdict already recorded (Passed/Rejected) — the row stays visible in the queue past this
+      point, just read-only, rather than disappearing once a decision is made. */
+  qcDecided: boolean;
 };
 
 function toRowInput(grn: QualityGrnQueueInput) {
@@ -66,6 +69,7 @@ export function buildQualityGrnQueueRow(grn: QualityGrnQueueInput): QualityGrnQu
   const itemName = String(line?.item ?? '').trim();
   const itemCode = String(line?.itemCode ?? '').trim();
   const statusView = buildInboundGrnStatusView(toRowInput(grn));
+  const qcStatus = String(grn.qcStatus ?? line?.qcStatus ?? 'Pending').trim() || 'Pending';
   return {
     id: grn.id,
     grnNo: displayInboundGrnNo(grn.grnNo),
@@ -73,17 +77,19 @@ export function buildQualityGrnQueueRow(grn: QualityGrnQueueInput): QualityGrnQu
     vendor: String(grn.vendor ?? '').trim() || '—',
     itemLabel: itemCode ? `${itemName || itemCode} · ${itemCode}` : itemName || '—',
     statusLabel: statusView.label,
-    qcStatus: String(grn.qcStatus ?? line?.qcStatus ?? 'Pending').trim() || 'Pending',
+    qcStatus,
+    qcDecided: qcStatus === 'Passed' || qcStatus === 'Pass' || qcStatus === 'Rejected',
   };
 }
 
+/**
+ * GRNs sent from warehouse via Send to QC. Used to stop showing a row the moment QC was decided,
+ * which made the completed inspection vanish instead of staying visible as a record — the row now
+ * stays in the queue (read-only once decided) rather than only living on the separate QC History
+ * page.
+ */
 export function filterInboundQcQueue(grns: QualityGrnQueueInput[]): QualityGrnQueueInput[] {
-  return grns.filter((grn) => {
-    const input = toRowInput(grn);
-    if (isInboundGrnCompleted(input)) return false;
-    if (isInboundGrnQcTested(input)) return false;
-    return isInboundGrnSentToQc(input);
-  });
+  return grns.filter((grn) => isInboundGrnSentToQc(toRowInput(grn)));
 }
 
 export function filterQuarantineQueue(grns: QualityGrnQueueInput[]): QualityGrnQueueInput[] {

@@ -115,6 +115,7 @@ import {
   normalizeLeadTimeDays,
   computeIssuedPoEtaFromLeadTimes,
   connectingOverridesFromFormData,
+  connectingDateByItemFromLineDates,
   normConnectingDateKey,
   computeRequestDaysUntilDue,
   sortVendorQuotesLatestFirst,
@@ -168,6 +169,7 @@ import {
 } from '../../lib/paymentTermsStructured';
 import { PaymentTermsDisplay } from '../../components/procurement/PaymentTermsDisplay';
 import { splitLinesByQuantity, lineQtyNumber } from '../../lib/splitPoByQuantity';
+import { poExpectedDateFromPr } from '../../lib/poExpectedDateFromPr';
 import {
   type PoType,
   PO_TYPE_CONFIG,
@@ -2505,9 +2507,13 @@ const Procurement: React.FC = () => {
 
       const today = new Date();
       const createdDateStr = today.toISOString().split('T')[0];
-      const expectedDelivery = new Date(today);
-      expectedDelivery.setDate(expectedDelivery.getDate() + Math.max(0, leadDays));
-      const expectedDeliveryStr = expectedDelivery.toISOString().split('T')[0];
+      // Prefer the request's required-by date so the PO lands in the week the planner released for;
+      // lead time is only the fallback. See lib/poExpectedDateFromPr.
+      const expectedDeliveryStr = poExpectedDateFromPr({
+        requiredByDate: (primaryRequest as { requiredByDate?: string | null } | undefined)?.requiredByDate ?? null,
+        today,
+        leadDays,
+      });
 
       const newDpoId = nextSequentialDpoOrderId(purchaseOrders, draftPOs);
       const vendorName = bucket.vendor;
@@ -3679,7 +3685,10 @@ const Procurement: React.FC = () => {
               createdDate: linkedPO.date ?? draftOverlay?.createdDate ?? request.createdDate ?? '',
               paymentTerms: linkedPO.paymentTerms ?? draftOverlay?.paymentTerms ?? linkedQuote?.terms ?? 'As per contract',
               backendPoId: /^\d+$/.test(backendPoId) ? backendPoId : undefined,
-              connectingDateByItem: connectingOverridesFromFormData(linkedPO.formData) ?? null,
+              // etaPayload.lineDates already resolves manual override ?? lead-time-derived date per
+              // line — using only the raw override map here left every PO with no manual override
+              // showing "—" in the Connecting column even though a real expected date was computable.
+              connectingDateByItem: connectingDateByItemFromLineDates(etaPayload.lineDates, request),
             };
           });
         }
@@ -3722,6 +3731,9 @@ const Procurement: React.FC = () => {
             createdDate: linkedDraftPO?.createdDate ?? request.createdDate ?? '',
             paymentTerms: linkedDraftPO?.paymentTerms ?? linkedQuote?.terms ?? 'As per contract',
             backendPoId: undefined,
+            // Draft PO rows never carried a Connecting date at all — a draft still has a computable
+            // expected date (lead time / PR due date), it just hasn't been released yet.
+            connectingDateByItem: connectingDateByItemFromLineDates(draftEta.lineDates, request),
           },
         ];
       });
@@ -3829,7 +3841,7 @@ const Procurement: React.FC = () => {
         requestCode: placeholderRequest.code,
         createdDate: po.date ?? '',
         paymentTerms: po.paymentTerms ?? 'As per contract',
-        connectingDateByItem: connectingOverridesFromFormData(po.formData) ?? null,
+        connectingDateByItem: connectingDateByItemFromLineDates(unlinkedEta.lineDates, placeholderRequest),
       };
     });
 
@@ -4722,9 +4734,11 @@ const Procurement: React.FC = () => {
       ...lineItems.map((l) => Number(l.leadTimeDays ?? 0) || 0),
       Number(quoteToUse?.leadTimeDays ?? 0) || 0
     );
-    const expectedDelivery = new Date(today);
-    expectedDelivery.setDate(expectedDelivery.getDate() + leadDaysForDelivery);
-    const expectedDeliveryStr = expectedDelivery.toISOString().split('T')[0];
+    const expectedDeliveryStr = poExpectedDateFromPr({
+      requiredByDate: (reqForAction as { requiredByDate?: string | null } | undefined)?.requiredByDate ?? null,
+      today,
+      leadDays: leadDaysForDelivery,
+    });
     const poPayload = {
       orderId: newDpoId,
       vendorName: vendor,

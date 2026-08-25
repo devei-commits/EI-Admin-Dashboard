@@ -28,6 +28,13 @@ describe('qualityGrnQueueDisplay', () => {
     expect(row.grnNo).toBe('GRN-001');
     expect(row.itemLabel).toContain('Retinol');
     expect(row.statusLabel).toBe('VERIFIED');
+    expect(row.qcDecided).toBe(false);
+  });
+
+  it('marks a row qcDecided once QC is passed or rejected', () => {
+    expect(buildQualityGrnQueueRow(baseGrn({ qcStatus: 'Passed' })).qcDecided).toBe(true);
+    expect(buildQualityGrnQueueRow(baseGrn({ qcStatus: 'Rejected' })).qcDecided).toBe(true);
+    expect(buildQualityGrnQueueRow(baseGrn({ qcStatus: 'Pending' })).qcDecided).toBe(false);
   });
 
   it('filters inbound QC to GRNs sent from warehouse', () => {
@@ -36,6 +43,21 @@ describe('qualityGrnQueueDisplay', () => {
     const passed = baseGrn({ id: '3', qcStatus: 'Passed' });
     const result = filterInboundQcQueue([sent, verified, passed]);
     expect(result.map((g) => g.id)).toEqual(['1']);
+  });
+
+  // A GRN whose QC has already been decided must stay in the queue (read-only) instead of
+  // vanishing the moment it's completed — the queue is the record, not just a to-do list.
+  it('keeps a QC-decided GRN in the queue instead of dropping it once completed', () => {
+    const pending = baseGrn({ workflowSteps: ['Sent to QC'] });
+    const decided = baseGrn({ id: '2', workflowSteps: ['Sent to QC'], qcStatus: 'Passed' });
+    const completed = baseGrn({
+      id: '3',
+      status: 'GRN Complete',
+      workflowSteps: ['Sent to QC'],
+      qcStatus: 'Passed',
+    });
+    const result = filterInboundQcQueue([pending, decided, completed]);
+    expect(result.map((g) => g.id)).toEqual(['1', '2', '3']);
   });
 
   it('filters quarantine queue to not-yet-sent GRNs', () => {

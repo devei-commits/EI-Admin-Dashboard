@@ -269,6 +269,9 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
                   accent="teal"
                   thClassName="px-4 py-2.5 text-[10px] tracking-wide normal-case"
                 />
+                <th scope="col" className="px-4 py-2.5 text-left text-[10px] font-semibold tracking-wide text-ink-3 whitespace-nowrap">
+                  Status
+                </th>
                 <SortableTableTh
                   label="SLA"
                   column="sla"
@@ -350,6 +353,19 @@ const QualityOrderManagementTable: React.FC<QualityOrderManagementTableProps> = 
                   </td>
                   <td className={`px-4 py-3 align-top whitespace-nowrap text-[11px] tracking-wide ${row.priorityClass}`}>
                     {row.priorityDisplay}
+                  </td>
+                  <td className="px-4 py-3 align-top whitespace-nowrap text-[11px]">
+                    <span
+                      className={`rounded-full px-2 py-0.5 font-semibold ${
+                        row.qcStatusLabel === 'Passed'
+                          ? 'bg-ok-soft text-ok'
+                          : row.qcStatusLabel === 'Rejected'
+                            ? 'bg-err-soft text-err'
+                            : 'bg-surface-2 text-ink-2'
+                      }`}
+                    >
+                      {row.qcStatusLabel}
+                    </span>
                   </td>
                   <td
                     className={`px-4 py-3 align-top whitespace-nowrap text-[11px] ${qualityOrderManagementSlaClass(row.slaTone)}`}

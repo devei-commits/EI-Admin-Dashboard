@@ -12,6 +12,8 @@ import { TableSkeleton } from '../ui/Skeleton';
 import { EmptyState } from '../ui/EmptyState';
 import { ErrorState } from '../ui/ErrorState';
 import RecordDetailModal, { type DetailSection } from '../ui/RecordDetailModal';
+import { sortGroupedBatchRows, type BatchesSortKey, type SortDir } from '../../lib/soDashboardSort';
+import { Pagination } from '../ui/Pagination';
 
 /* ── Formatting helpers ───────────────────────────────────────────────────── */
 function fmtDate(d: string | null | undefined): string {
@@ -46,6 +48,9 @@ const STAGE_COLORS: Record<string, { bg: string; text: string; border: string }>
   PACKED:      { bg: 'bg-brand-soft',  text: 'text-brand',  border: 'border-brand-soft' },
   INVOICED:    { bg: 'bg-brand-soft',  text: 'text-brand',  border: 'border-brand-soft' },
   SHIPPED:     { bg: 'bg-brand-soft',    text: 'text-brand',    border: 'border-brand-soft' },
+  // An order line planning has not cut a batch for yet — deliberately muted, since it is an
+  // absence of progress rather than a stage the line has reached.
+  PENDING:     { bg: 'bg-surface-3',   text: 'text-ink-3',    border: 'border-dashed border-border' },
 };
 
 function StageBadge({ stage, label }: { stage: string; label: string }) {
@@ -186,6 +191,17 @@ export const BatchesDashboardView: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Filters
+  // SO # ascending keeps the ordering this tab had before columns became sortable.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [sortKey, setSortKey] = useState<BatchesSortKey>('soNo');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  /** Clicking the active column flips direction; a new column starts ascending. */
+  const handleSort = (key: string) => {
+    const next = key as BatchesSortKey;
+    setSortDir((prev) => (sortKey === next ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'));
+    setSortKey(next);
+  };
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
   const [flaggedOnly, setFlaggedOnly] = useState(false);
@@ -220,7 +236,25 @@ export const BatchesDashboardView: React.FC = () => {
     return () => clearTimeout(t);
   }, [load, search]);
 
-  const grouped = useMemo(() => groupRows(dedupRows(rows)), [rows]);
+  // Batches sort inside their product line and the lines follow their leading batch, so a
+  // product's batches stay together whichever column is chosen.
+  const grouped = useMemo(
+    () => sortGroupedBatchRows(groupRows(dedupRows(rows)), sortKey, sortDir),
+    [rows, sortKey, sortDir],
+  );
+
+  // Paginate the PRODUCT LINES, not the batch rows: a line renders as one visual record with its
+  // batches nested, so splitting mid-line would tear a product across two pages.
+  const totalPages = Math.max(1, Math.ceil(grouped.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pagedGroups = useMemo(
+    () => grouped.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [grouped, safePage, pageSize],
+  );
+  // Any change to filters, sort or page size can shorten the list — step back to a page that exists.
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
   const totalBatches = useMemo(() => grouped.reduce((s, g) => s + g.batches.length, 0), [grouped]);
   const overdueCount = useMemo(() => grouped.filter((g) => g.worstSla.overdue).length, [grouped]);
 
@@ -305,10 +339,27 @@ export const BatchesDashboardView: React.FC = () => {
         <div className="overflow-auto max-h-[70vh] rounded-xl border border-border">
           <table className="w-full text-sm text-left border-collapse">
             <ProcThead
-              cols={['SO #', 'Client', 'Product', { label: 'Order Qty', align: 'right' }, 'Due Date', 'Batch', 'FG Ready', 'Packed', 'Invoiced', 'Shipped', 'Batch Status', 'Stage Time Log', '']}
+              cols={[
+                { label: 'SO #', sortKey: 'soNo' },
+                { label: 'Client', sortKey: 'client' },
+                { label: 'Product', sortKey: 'product' },
+                { label: 'Order Qty', align: 'right', sortKey: 'orderQty' },
+                { label: 'Due Date', sortKey: 'dueDate' },
+                { label: 'Batch', sortKey: 'batchNo' },
+                { label: 'FG Ready', sortKey: 'fgReady' },
+                { label: 'Packed', sortKey: 'packed' },
+                { label: 'Invoiced', sortKey: 'invoiced' },
+                { label: 'Shipped', sortKey: 'shipped' },
+                { label: 'Batch Status', sortKey: 'batchStatus' },
+                'Stage Time Log',
+                '',
+              ]}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              onSort={handleSort}
             />
             <tbody>
-              {grouped.map((group) => {
+              {pagedGroups.map((group) => {
                 const rep = group.representative;
                 const ordered = rep.product.orderedQty || 0;
                 const dtg = daysToGo(rep.dueDate);
@@ -316,10 +367,15 @@ export const BatchesDashboardView: React.FC = () => {
 
                 return group.batches.map((row, batchIdx) => {
                   const isFirst = batchIdx === 0;
-                  const batchQty = row.fgQty > 0 ? row.fgQty : ordered;
-                  const cov = ordered > 0 && batchQty > 0
-                    ? Math.min(100, Math.round((batchQty / ordered) * 100))
-                    : row.batch.coveragePct;
+                  // Batch size in the order's UNITS. `plannedQty` is kilograms, so showing it against
+                  // an order quantity in units compared two different things ("5 / 1,000" for a batch
+                  // that is really 100 of 1,000). Falls back to the kg figure only when the
+                  // KG-per-unit ratio could not be derived.
+                  const plannedUnits = row.batch.plannedUnits ?? null;
+                  const batchQty = plannedUnits ?? row.batch.plannedQty;
+                  // Coverage is the batch's share of the order. It previously fell back to `ordered`
+                  // whenever nothing was produced yet, which made every un-started batch read 100%.
+                  const cov = row.batch.coveragePct;
 
                   return (
                     <tr
@@ -339,8 +395,12 @@ export const BatchesDashboardView: React.FC = () => {
                           </td>
 
                           {/* Client */}
-                          <td className="px-3 py-2.5 align-top max-w-[130px]" rowSpan={rowSpan}>
-                            <p className="text-xs text-ink truncate" title={rep.client.name}>{rep.client.name}</p>
+                          <td className="px-3 py-2.5 align-top max-w-[160px]" rowSpan={rowSpan}>
+                            {/* Client names run long ("MED MANOR ORGANICS PVT LTD.."). Wrapping shows
+                                the whole name instead of clipping it to a tooltip only. */}
+                            <p className="text-xs text-ink break-words whitespace-normal" title={rep.client.name}>
+                              {rep.client.name}
+                            </p>
                             {rep.client.code && <p className="text-[10px] text-ink-4 font-mono">{rep.client.code}</p>}
                           </td>
 
@@ -386,14 +446,21 @@ export const BatchesDashboardView: React.FC = () => {
                       {/* Batch Planning */}
                       <td className="px-3 py-2.5 align-top min-w-[130px]">
                         <p className="text-xs font-semibold text-ink-2">
-                          {row.batch.batchNo || row.batch.bprNo || <span className="italic text-ink-4 font-normal">Pending</span>}
+                          {row.batch.batchNo || row.batch.bprNo || (
+                            <span className="italic text-ink-4 font-normal">
+                              {row.batch.stage === 'PENDING' ? 'Batch creation pending' : 'Pending'}
+                            </span>
+                          )}
                         </p>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className="inline-block w-10 h-1 rounded-full bg-surface-3 overflow-hidden shrink-0">
                             <span className="block h-full rounded-full bg-brand" style={{ width: `${Math.min(100, cov)}%` }} />
                           </span>
                           <span className="text-[9px] text-ink-4 whitespace-nowrap">
-                            {fmtNum(row.batch.plannedQty)} / {fmtNum(ordered)} · {cov}% cov
+                            {fmtNum(batchQty)} / {fmtNum(ordered)} · {cov}% cov
+                            {plannedUnits == null && row.batch.plannedQty > 0 && (
+                              <span className="ml-1 text-ink-4">(kg)</span>
+                            )}
                           </span>
                         </div>
                         {row.batch.bmrNo && <p className="text-[9px] text-ink-4 mt-0.5">BMR {row.batch.bmrNo}</p>}
@@ -440,6 +507,33 @@ export const BatchesDashboardView: React.FC = () => {
         </div>
       )}
 
+      {!loading && !error && grouped.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <label className="flex items-center gap-2 text-xs text-ink-3">
+            Rows per page
+            <select
+              value={pageSize}
+              onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+              className="rounded-md border border-border bg-surface px-2 py-1 text-xs text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+            >
+              {[10, 25, 50, 100].map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            <span className="text-ink-4">
+              {grouped.length} product line{grouped.length === 1 ? '' : 's'}
+            </span>
+          </label>
+          <Pagination
+            currentPage={safePage}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            totalItems={grouped.length}
+            itemsPerPage={pageSize}
+          />
+        </div>
+      )}
+
       {/* Comments / history panel (per batch) */}
       {commentTarget && (
         <>
@@ -466,7 +560,8 @@ export const BatchesDashboardView: React.FC = () => {
               { label: 'BMR No', value: b.bmrNo, mono: true },
               { label: 'BPR No', value: b.bprNo, mono: true },
               { label: 'Stage', value: b.stageLabel },
-              { label: 'Planned Qty', value: num(b.plannedQty) },
+              { label: 'Planned Qty', value: b.plannedUnits != null ? `${num(b.plannedUnits)} units` : num(b.plannedQty) },
+              { label: 'Batch Size', value: b.plannedQty ? `${num(b.plannedQty)} kg` : undefined },
               { label: 'Coverage', value: b.coveragePct != null ? `${b.coveragePct}%` : undefined },
               { label: 'FG Location', value: b.fgLocation },
             ],

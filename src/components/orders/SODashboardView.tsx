@@ -23,6 +23,7 @@ import { ProcSectionHeader, ProcFilterBar, ProcThead, ProcTableCard } from '../p
 import { TableSkeleton } from '../ui/Skeleton';
 import { EmptyState } from '../ui/EmptyState';
 import { ErrorState } from '../ui/ErrorState';
+import { sortGroupedSoRows, type SoDashboardSortKey, type SortDir } from '../../lib/soDashboardSort';
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '—';
@@ -396,6 +397,9 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
 
   // Client group collapse + row action menu
   const [collapsedClients, setCollapsedClients] = useState<Set<string>>(new Set());
+  // SO No ascending preserves the ordering this table had before columns became sortable.
+  const [sortKey, setSortKey] = useState<SoDashboardSortKey>('soNo');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [menuOpenId, setMenuOpenId] = useState<number | null>(null);
 
   // Cancel / manual-fulfill confirm
@@ -462,8 +466,12 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
   // Group rows by client name
   type ClientGroup = { clientKey: string; clientName: string; clientCode: string | null; rows: SODashboardRow[]; totalValue: number };
   /** SO numbers are text with a numeric tail (SO-00029 / SO-00203) — compare numerically so 30 < 203. */
-  const bySoNo = (a: SODashboardRow, b: SODashboardRow) =>
-    String(a.soNo ?? '').localeCompare(String(b.soNo ?? ''), undefined, { numeric: true, sensitivity: 'base' });
+  /** Clicking the active column flips direction; a new column starts ascending. */
+  const handleSort = (key: string) => {
+    const next = key as SoDashboardSortKey;
+    setSortDir((prev) => (sortKey === next ? (prev === 'asc' ? 'desc' : 'asc') : 'asc'));
+    setSortKey(next);
+  };
 
   const groups: ClientGroup[] = [];
   const seenClients = new Map<string, ClientGroup>();
@@ -478,10 +486,12 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
     g.rows.push(row);
     g.totalValue += row.soValue;
   }
-  // Order by SO No: inside each client, and the clients themselves by their earliest SO, so the
-  // whole page reads in SO order top to bottom rather than in fetch order.
-  for (const g of groups) g.rows.sort(bySoNo);
-  groups.sort((a, b) => (a.rows[0] && b.rows[0] ? bySoNo(a.rows[0], b.rows[0]) : 0));
+  // Rows sort inside their client group and the groups follow their leading row, so a client's
+  // orders stay together whichever column is chosen. SO No ascending is the default, which is the
+  // behaviour this table always had.
+  const sortedGroups = sortGroupedSoRows(groups, sortKey, sortDir);
+  groups.length = 0;
+  groups.push(...sortedGroups);
 
   // Serial numbers are assigned over the fully sorted list, so a row keeps its number when other
   // client groups are collapsed — a counter that renumbered on collapse would be useless to quote.
@@ -646,7 +656,24 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
       ) : (
         <ProcTableCard>
             <ProcThead
-              cols={['', { label: 'Sr', align: 'right' }, 'SO No', 'Due Date', 'Committed Date', 'Product', 'Status', { label: 'Order Qty', align: 'right' }, { label: 'Price/U', align: 'right' }, { label: 'Amount', align: 'right' }, 'Fulfillment Status', 'Batch Stage', { label: 'Actions', align: 'center' }]}
+              cols={[
+                '',
+                { label: 'Sr', align: 'right' },
+                { label: 'SO No', sortKey: 'soNo' },
+                { label: 'Due Date', sortKey: 'dueDate' },
+                { label: 'Committed Date', sortKey: 'committedDate' },
+                { label: 'Product', sortKey: 'product' },
+                { label: 'Status', sortKey: 'status' },
+                { label: 'Order Qty', align: 'right', sortKey: 'orderQty' },
+                { label: 'Price/U', align: 'right', sortKey: 'unitPrice' },
+                { label: 'Amount', align: 'right', sortKey: 'amount' },
+                { label: 'Fulfillment Status', sortKey: 'fulfillment' },
+                { label: 'Batch Stage', sortKey: 'batchStage' },
+                { label: 'Actions', align: 'center' },
+              ]}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              onSort={handleSort}
             />
             <tbody className="divide-y divide-hairline">
               {groups.map((group) => {

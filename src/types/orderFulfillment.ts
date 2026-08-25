@@ -427,7 +427,10 @@ export interface BatchDashboardRow {
     batchNo: string;
     bprNo: string;
     bmrNo: string;
+    /** Batch size in KG (as stored on the split). */
     plannedQty: number;
+    /** Batch size converted to the order's units; null when the KG-per-unit ratio is unknown. */
+    plannedUnits?: number | null;
     coveragePct: number;
     stage: string;
     stageLabel: string;

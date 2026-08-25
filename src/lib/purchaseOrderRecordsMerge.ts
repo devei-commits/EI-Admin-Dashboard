@@ -16,6 +16,32 @@ function mapLegacyToWorkflowStatus(record: IssuedPOViewRecord): PoStatus {
   return 'issued';
 }
 
+function normItemKey(s: string): string {
+  return String(s ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * Connecting-date map for a standalone draft PO row (one not yet folded into computeIssuedPoEtaFromLeadTimes's
+ * pipeline). Draft/Accepted-status POs built here never got a connectingDateByItem at all — the
+ * "Connecting" column reads only that field, not etaDateDisplay, so every Draft/Accepted PO showed
+ * "—" regardless of anything already known about when it's actually needed.
+ *
+ * Priority matches the issued-PO fix: the PR's own required-by date (per line, falling back to the
+ * PR header) wins over dpo.expectedDelivery, since that field can itself have been computed from
+ * "today + lead days" for POs created before that was fixed.
+ */
+function connectingDateByItemForDraft(dpo: DraftPO, request: ProcurementRequest): Record<string, string> | null {
+  const out: Record<string, string> = {};
+  for (const line of dpo.lineItems ?? []) {
+    const itemDetail = request.itemDetails?.find(
+      (d) => normItemKey(d.itemCode) === normItemKey(line.itemCode) || normItemKey(d.itemName) === normItemKey(line.item),
+    );
+    const date = itemDetail?.expectedDate || request.dueDate || dpo.expectedDelivery || null;
+    if (date) out[normItemKey(line.itemCode || line.item)] = date;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 /** Placeholder PR for imported / planning draft POs that are not linked to a procurement request. */
 function placeholderRequestForDraft(dpo: DraftPO): ProcurementRequest {
   const type: RequestType = dpo.type === 'PM' ? 'PM' : 'RM';
@@ -74,6 +100,7 @@ export function mergePurchaseOrderRecords(
       paymentTerms: dpo.paymentTerms,
       backendPoId: dpo.backendPoId,
       approvalStatus: dpo.approvalStatus ?? null,
+      connectingDateByItem: connectingDateByItemForDraft(dpo, request),
     });
   }
 

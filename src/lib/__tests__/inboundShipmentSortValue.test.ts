@@ -1,6 +1,10 @@
 /**
  * Warehouse → Inbound listed GRNs in backend order, interleaving July and August rows, and the
- * Shipment column sorted on its own display label ("24-Jul") — i.e. alphabetically.
+ * date column sorted on its own display label ("24-Jul") — i.e. alphabetically.
+ *
+ * The column now shows when the GRN was CREATED. It used to read
+ * `grnDate ?? receivedDate ?? expectedDate`, and most GRNs carry no grn_date, so it fell through to
+ * the EXPECTED date — a future date presented as though the GRN had been raised then.
  */
 import { describe, it, expect } from 'vitest';
 import { inboundShipmentSortValue, formatInboundShipmentLabel } from '../inboundGrnTableDisplay';
@@ -46,5 +50,24 @@ describe('inboundShipmentSortValue', () => {
   it('orders across years rather than by month name', () => {
     expect(inboundShipmentSortValue(grn({ grnDate: '2027-01-05' })))
       .toBeGreaterThan(inboundShipmentSortValue(grn({ grnDate: '2026-12-31' })));
+  });
+});
+
+describe('column shows the creation date', () => {
+  it('prefers createdAt over every other date', () => {
+    const g = grn({ createdAt: '2026-08-25', grnDate: '2026-08-23', receivedDate: '2026-08-24', expectedDate: '2026-08-27' });
+    expect(formatInboundShipmentLabel(g)).toBe(formatInboundShipmentLabel(grn({ createdAt: '2026-08-25' })));
+    expect(inboundShipmentSortValue(g)).toBe(new Date('2026-08-25').getTime());
+  });
+
+  it('no longer shows a FUTURE expected date for a GRN with no grn_date — the reported bug', () => {
+    // GRN-2026-0188: created 25-Aug, expected 27-Aug, no grn_date.
+    const g = grn({ createdAt: '2026-08-25', grnDate: null, receivedDate: null, expectedDate: '2026-08-27' });
+    expect(inboundShipmentSortValue(g)).toBe(new Date('2026-08-25').getTime());
+  });
+
+  it('falls back to the old chain for a row with no createdAt', () => {
+    expect(inboundShipmentSortValue(grn({ grnDate: '2026-08-23' }))).toBe(new Date('2026-08-23').getTime());
+    expect(inboundShipmentSortValue(grn({ expectedDate: '2026-08-27' }))).toBe(new Date('2026-08-27').getTime());
   });
 });
