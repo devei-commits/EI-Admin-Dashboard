@@ -172,13 +172,14 @@ describe('grnCopyReceiptDisplay', () => {
       expect(missing).toEqual(['coa']);
     });
 
-    it('requires nothing when the checklist has no bill/waybill/coa items ticked', () => {
-      // Only MSDS + Weighment Slip were ticked — this GRN's shipment never carried an invoice,
-      // e-way bill, or COA, so nothing should block it.
+    it('asks for MSDS / Weighment Slip too when those are what was ticked', () => {
+      // Superseded behaviour: these used to require nothing, because only invoice/e-way bill/COA
+      // had an upload slot. Every checklist item now has one, so ticking a document at the dock
+      // means it is asked for here — otherwise it is recorded as arriving with nowhere to attach it.
       const missing = missingRequiredGrnDocs({
         receipt: { checklist: { msds: true, weighmentSlip: true } },
       });
-      expect(missing).toEqual([]);
+      expect(missing).toEqual(['msds', 'weighment_slip']);
     });
 
     it('falls back to requiring all three when there is no checklist at all (legacy GRN)', () => {

@@ -3,9 +3,15 @@
  * Light tool-native styling via ProcModalShell. Each collects a shipment qty +
  * shared vehicle details and submits to create 1 SB + 1/N GRNs.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ProcModalShell, ModalSection, Field } from './ProcModalShell';
-import type { InitiateTransitPayload, ConsolidatedShipmentPayload, TransitVehicle } from '../../services/grn.service';
+import {
+  fetchShipmentHistoryForPo,
+  type InitiateTransitPayload,
+  type ConsolidatedShipmentPayload,
+  type TransitVehicle,
+  type ShipmentHistoryBatch,
+} from '../../services/grn.service';
 
 function todayInput(): string {
   const d = new Date();
@@ -50,6 +56,101 @@ const QtyStat: React.FC<{ label: string; value: React.ReactNode; tone?: 'default
     <p className={`text-base font-bold tabular-nums mt-0.5 ${tone === 'bad' ? 'text-warn' : 'text-ink'}`}>{value}</p>
   </div>
 );
+
+// ─── Shipment history (previous trucks already raised against this PO) ──────
+function useShipmentHistory(poId?: number | string | null) {
+  const [history, setHistory] = useState<ShipmentHistoryBatch[]>([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    if (poId == null || poId === '') {
+      setHistory([]);
+      return;
+    }
+    setLoading(true);
+    fetchShipmentHistoryForPo(poId)
+      .then((rows) => { if (!cancelled) setHistory(rows); })
+      .catch(() => { if (!cancelled) setHistory([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [poId]);
+  return { history, loading };
+}
+
+function fmtHistoryDate(d: string | null | undefined): string {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return String(d);
+  return dt.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+const STAGE_LABEL: Record<string, string> = {
+  in_transit: 'In Transit', landed: 'Landed', verified: 'Verified',
+  quarantined: 'Quarantine', qc_tested: 'QC Tested', grn_completed: 'GRN Complete',
+};
+const StageBadge: React.FC<{ stage: string }> = ({ stage }) => (
+  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9.5px] font-semibold whitespace-nowrap ${
+    stage === 'grn_completed' ? 'bg-ok-soft text-ok' : stage === 'in_transit' ? 'bg-brand-soft text-brand' : 'bg-surface-3 text-ink-2'
+  }`}>
+    {STAGE_LABEL[stage] || stage}
+  </span>
+);
+
+const ShipmentHistorySection: React.FC<{ poId?: number | string | null }> = ({ poId }) => {
+  const { history, loading } = useShipmentHistory(poId);
+  if (loading) {
+    return (
+      <ModalSection title="Shipment history · previous trucks on this PO">
+        <p className="text-xs text-ink-3">Loading…</p>
+      </ModalSection>
+    );
+  }
+  if (history.length === 0) return null;
+  return (
+    <ModalSection title={`Shipment history · previous trucks on this PO (${history.length})`}>
+      <div className="space-y-2 max-h-64 overflow-auto -mx-1 px-1">
+        {history.map((sb) => (
+          <div key={sb.id} className="rounded-lg border border-border bg-surface-2 px-3 py-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-mono text-xs font-bold text-ink">{sb.code}</span>
+                <span className="text-[10.5px] text-ink-3">{fmtHistoryDate(sb.shippedDate || sb.createdAt)}</span>
+                {sb.vehicleNo && <span className="text-[10.5px] text-ink-3">· {sb.vehicleNo}</span>}
+                {sb.transporter && <span className="text-[10.5px] text-ink-3">· {sb.transporter}</span>}
+              </div>
+              <span className="text-xs font-bold text-ink tabular-nums">
+                {(sb.totalQty ?? 0).toLocaleString('en-IN')} total
+              </span>
+            </div>
+            {(sb.driverName || sb.driverPhone || sb.vendorInvoiceNo || sb.expectedArrival) && (
+              <p className="text-[10.5px] text-ink-4 mt-0.5">
+                {[
+                  sb.driverName ? `Driver: ${sb.driverName}${sb.driverPhone ? ` (${sb.driverPhone})` : ''}` : null,
+                  sb.vendorInvoiceNo ? `Invoice: ${sb.vendorInvoiceNo}` : null,
+                  sb.expectedArrival ? `Expected: ${fmtHistoryDate(sb.expectedArrival)}` : null,
+                ].filter(Boolean).join(' · ')}
+              </p>
+            )}
+            <div className="mt-1.5 space-y-1">
+              {sb.grns.map((g) => (
+                <div key={g.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+                  <span className="font-mono text-ink-3">{g.grnNo}</span>
+                  <StageBadge stage={g.stage} />
+                  {g.lineItems.map((li, i) => (
+                    <span key={i} className="text-ink-2">
+                      {li.item || li.itemCode} · <b className="text-ink">{(li.shippedQty ?? g.shippedQty ?? 0).toLocaleString('en-IN')}</b> shipped
+                      {li.poQty > 0 ? <span className="text-ink-4"> of {li.poQty.toLocaleString('en-IN')}</span> : null}
+                    </span>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </ModalSection>
+  );
+};
 
 // ─── §4A Initiate Transit (per line) ─────────────────────────────────────────
 export interface InitiateTransitPopupProps {
@@ -117,6 +218,8 @@ export const InitiateTransitPopup: React.FC<InitiateTransitPopupProps> = ({ poId
       <div className="rounded-lg border border-border bg-surface-2 px-3.5 py-2 text-[11px] text-ink-3">
         On create: a <b>Shipment Batch (SB)</b> + one <b>GRN</b> are generated (stage <b>In Transit</b>) and appear in the GRN tracker.
       </div>
+
+      <ShipmentHistorySection poId={poId} />
     </ProcModalShell>
   );
 };
@@ -238,6 +341,8 @@ export const ConsolidatedShipmentPopup: React.FC<ConsolidatedShipmentPopupProps>
       <div className="rounded-lg border border-border bg-surface-2 px-3.5 py-2 text-[11px] text-ink-3">
         On create: <b>one Shipment Batch</b> with <b>{selected.length || 'N'}</b> child GRN{selected.length !== 1 ? 's' : ''} (all stage <b>In Transit</b>, same truck) — they share the SB# in the GRN tracker.
       </div>
+
+      <ShipmentHistorySection poId={poId} />
     </ProcModalShell>
   );
 };

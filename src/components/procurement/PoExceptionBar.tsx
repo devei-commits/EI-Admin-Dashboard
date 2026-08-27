@@ -1,16 +1,17 @@
 /**
- * PO exception controls (Flowchart Hold · Cancel · Amend).
+ * PO exception controls (Flowchart Hold · Cancel · Amend · Revert to Draft).
  * Self-contained: fetches its own exception state. Shows an ON HOLD / CANCELLED
  * banner and the available lifecycle actions with a reason prompt.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { PauseCircle, PlayCircle, XOctagon, PencilLine, Loader2, ShieldAlert } from 'lucide-react';
+import { PauseCircle, PlayCircle, XOctagon, PencilLine, RotateCcw, Loader2, ShieldAlert } from 'lucide-react';
 import {
   fetchPoExceptionState,
   holdPo,
   resumePo,
   cancelPo,
   amendPo,
+  revertPoToDraft,
   type PoExceptionState,
 } from '../../services/poException.service';
 import { ErrorState } from '../ui/ErrorState';
@@ -130,6 +131,20 @@ export const PoExceptionBar: React.FC<PoExceptionBarProps> = ({ poId, onToast, o
             {state.canResume && (
               <button type="button" disabled={busy != null} onClick={() => run(() => resumePo(poId), 'resume', 'PO resumed.')} className={`${btn} bg-ok text-white hover:brightness-95`}>
                 {busy === 'resume' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PlayCircle className="h-3.5 w-3.5" />} Resume
+              </button>
+            )}
+            {state.canRevertToDraft && (
+              <button
+                type="button"
+                disabled={busy != null}
+                title="Send this PO back to Draft for editing — short of approval, so no reason is required."
+                onClick={() => {
+                  if (!window.confirm('Revert this PO to Draft? It will need to be re-submitted for review.')) return;
+                  void run(() => revertPoToDraft(poId), 'revert-draft', 'PO reverted to Draft.');
+                }}
+                className={`${btn} bg-surface text-ink-2 border border-border hover:bg-surface-3`}
+              >
+                {busy === 'revert-draft' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />} Revert to Draft
               </button>
             )}
             {state.canHold && (

@@ -1,3 +1,4 @@
+import { evaluateAgainstSpec } from './qcSpecConstraint';
 import type { GrnQualitySpecOutputType, MasterQualitySpecDataType } from './qualitySpecDataType';
 import { isNumberQualitySpecKind, parseGrnOutputType } from './qualitySpecDataType';
 import type { GrnQcTestRow } from './grnQcSpecs';
@@ -34,6 +35,16 @@ export function deriveAutoPassedFromResult(test: GrnQcTestRow): boolean | null {
   if (!result || /^pending$/i.test(result)) return null;
 
   const outputType = parseGrnOutputType(test.outputType) ?? 'text';
+
+  // The spec STRING is authoritative when it states a numeric rule. Master-seeded tests mostly
+  // carry no outputType, so "≥ 99.5%", "1100 - 1500" and "38 - 43" previously fell through to the
+  // text branch where any non-empty entry passed — a viscosity of -1 reported PASS.
+  // Skipped for output types that are explicitly non-numeric verdicts (pass-fail / boolean), where
+  // the entry is a word rather than a measurement.
+  if (outputType !== 'pass-fail' && outputType !== 'boolean') {
+    const bySpec = evaluateAgainstSpec(test.specLimit, result, test.tolerance);
+    if (bySpec !== undefined) return bySpec;
+  }
 
   if (outputType === 'pass-fail') {
     if (/^pass$/i.test(result)) return true;

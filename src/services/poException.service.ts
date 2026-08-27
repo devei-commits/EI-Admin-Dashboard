@@ -1,6 +1,6 @@
 /**
- * PO exception paths API (Flowchart Hold · Cancel · Amend).
- * Backend: /api/v1/purchase-orders/:id/exception[/hold|/resume|/cancel|/amend]
+ * PO exception paths API (Flowchart Hold · Cancel · Amend · Revert to Draft).
+ * Backend: /api/v1/purchase-orders/:id/exception[/hold|/resume|/cancel|/amend|/revert-draft]
  */
 import type { ServiceResult } from '../types/api.types';
 import { api } from '../lib/apiClient';
@@ -26,6 +26,11 @@ export interface PoExceptionState {
   canCancel: boolean;
   requiresCfoToCancel: boolean;
   canAmend: boolean;
+  /** Lighter sibling of canAmend — a PO already in the approval workflow but short of approval
+   *  (under review / under approval / rejected / changes requested) can be sent back to Draft
+   *  without a reason or amendment bump. False once it's not_submitted (already there) or approved/
+   *  sent/released (use Amend instead). */
+  canRevertToDraft: boolean;
 }
 
 function apiErrorMessage(e: unknown, fallback: string): string {
@@ -81,5 +86,14 @@ export async function amendPo(id: string, reason: string): Promise<ServiceResult
     return { data: data ?? null, error: null, success: true };
   } catch (e) {
     return { data: null, error: apiErrorMessage(e, 'Failed to amend PO'), success: false };
+  }
+}
+
+export async function revertPoToDraft(id: string, note?: string): Promise<ServiceResult<PoExceptionState>> {
+  try {
+    const data = await api.post<PoExceptionState>(`${base(id)}/revert-draft`, { reason: note ?? undefined });
+    return { data: data ?? null, error: null, success: true };
+  } catch (e) {
+    return { data: null, error: apiErrorMessage(e, 'Failed to revert PO to Draft'), success: false };
   }
 }

@@ -18,7 +18,9 @@ describe('inboundGrnTableDisplay', () => {
     expect(view.statusLabel).toBe('IN TRANSIT');
     expect(view.storagePrimary).toBe('— (pre-rack)');
     expect(view.slaLabel).toContain('ETA 26-Jun');
-    expect(view.actionLabel).toBe('Confirm');
+    // IN TRANSIT and LANDED both open the same staged receipt modal, so they share one label —
+    // two names for one action read as two separate steps in the GRN flow.
+    expect(view.actionLabel).toBe('Confirm Receipt');
     expect(view.actionPrefix).toBe('✓');
   });
 

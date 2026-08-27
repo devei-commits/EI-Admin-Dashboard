@@ -8,7 +8,7 @@
  * Both tabs group rows by Vendor (accordion sections) instead of a flat list.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pencil, Truck, Download, ChevronRight, ChevronDown, ArrowUp, ArrowDown, X, ShieldCheck } from 'lucide-react';
+import { Pencil, Truck, Download, ChevronRight, ChevronDown, ArrowUp, ArrowDown, X, ShieldCheck, MessageSquare } from 'lucide-react';
 import { Package, Flag, Warning, Check } from '@phosphor-icons/react';
 import { Pagination } from '../ui';
 import { ProcSectionHeader, ProcTabs, ProcFilterBar, ProcSearch, procSelectClass, ProcTableCard, ProcEmpty } from './ProcSection';
@@ -21,6 +21,9 @@ import {
 } from '../../constants/procurement';
 import { InitiateTransitPopup, ConsolidatedShipmentPopup, type ConsolidatedLine } from './TransitPopups';
 import { initiateTransit, createConsolidatedShipment } from '../../services/grn.service';
+import { CommentsPanel } from '../orders/CommentsPanel';
+import { fetchCommentCounts } from '../../services/fulfillment.service';
+import { poBackendId } from '../../services/poApproval.service';
 
 /** Existing 3-state GRN status → spec 6-stage (best-effort until the stage axis is added). */
 function mapGrnStatusToStage(status: string | null | undefined): GrnStage {
@@ -79,6 +82,31 @@ function connectingDatesForRecord(record: IssuedPOViewRecord): { label: string; 
   // One date, or a range when the items connect on different days.
   const label = entries.length === 1 || first === last ? first : `${first} – ${last}`;
   return { label, items };
+}
+
+/**
+ * PO line items -> material comment threads, one chip per distinct material.
+ * Lines with no master link are skipped: a thread keyed on nothing would be unreachable from
+ * Planning, which is the whole point of sharing them.
+ */
+function poRowMaterialScopes(
+  lines: IssuedPOViewRecord['lineItems'] | undefined,
+): { type: 'rm' | 'pm'; id: number; label: string }[] {
+  const out: { type: 'rm' | 'pm'; id: number; label: string }[] = [];
+  const seen = new Set<string>();
+  for (const line of lines ?? []) {
+    const rm = Number(line.raw_material_id);
+    const pm = Number(line.pack_material_id);
+    const isRm = Number.isFinite(rm) && rm > 0;
+    const id = isRm ? rm : pm;
+    if (!Number.isFinite(id) || id <= 0) continue;
+    const type: 'rm' | 'pm' = isRm ? 'rm' : 'pm';
+    const key = `${type}-${id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ type, id, label: String(line.item ?? line.itemCode ?? key).trim() || key });
+  }
+  return out;
 }
 
 function fmtMoney(n: number): string {
@@ -286,6 +314,20 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [itemFilter, setItemFilter] = useState<string | null>(null); // "Other POs" drill
   const [collapsedVendors, setCollapsedVendors] = useState<Set<string>>(new Set());
+  /**
+   * Comments for a PO row: the PO's own thread plus one per material on it.
+   *
+   * Material threads are keyed by raw_materials.id / pack_materials.id — the same keys Planning
+   * uses in Items Involved and PIs Extracted — so a note left here IS the thread planning reads,
+   * not a copy of it.
+   */
+  const [poCommentTarget, setPoCommentTarget] = useState<{
+    id: number;
+    label: string;
+    materials: { type: 'rm' | 'pm'; id: number; label: string }[];
+  } | null>(null);
+  /** Comment counts per PO id, so a row with an open note is visible without opening it. */
+  const [commentCounts, setCommentCounts] = useState<Record<number, number>>({});
   const [poPage, setPoPage] = useState(1);
   const [itemsPage, setItemsPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -381,6 +423,20 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
       poQty: l.poQty, alreadyShipped: shippedForPoItem(record.poNumber, l.itemCode, l.item),
     });
   };
+
+  // One request for every visible PO rather than one per row.
+  const poIdsForCounts = records
+    .map((r) => Number(poBackendId(String(r.backendPoId ?? ''))))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const poIdsKey = poIdsForCounts.join(',');
+  useEffect(() => {
+    if (poIdsForCounts.length === 0) { setCommentCounts({}); return; }
+    let alive = true;
+    void fetchCommentCounts('po', poIdsForCounts).then((c) => { if (alive) setCommentCounts(c); });
+    return () => { alive = false; };
+    // Keyed on the id list, not the array identity, so this does not refetch on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [poIdsKey, poCommentTarget]);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -856,6 +912,30 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                             <td className="px-3 py-2.5">
                               <div className="flex gap-1">
                                 <button onClick={(e) => { e.stopPropagation(); onEdit(r); }} title={r.status === 'Draft' ? 'Edit PO' : 'Edit PO (via Amend)'} className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2 text-[10.5px] font-semibold"><Pencil size={12} /> Edit</button>
+                                {/* Comments on the PO itself, or on any material it carries. The
+                                    material threads are the ones Planning reads, so a note left
+                                    here reaches them without a second conversation. */}
+                                {r.backendPoId && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPoCommentTarget({
+                                        id: Number(poBackendId(String(r.backendPoId))),
+                                        label: `${r.poNumber} · ${r.vendor}`,
+                                        materials: poRowMaterialScopes(r.lineItems),
+                                      });
+                                    }}
+                                    title="Comments — this PO, or a material on it (shared with Planning)"
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-border text-ink-3 bg-surface-3 hover:bg-surface-2 text-[10.5px] font-semibold"
+                                  >
+                                    <MessageSquare size={12} />
+                                    {(commentCounts[Number(poBackendId(String(r.backendPoId)))] ?? 0) > 0 && (
+                                      <span className="text-brand font-bold">
+                                        {commentCounts[Number(poBackendId(String(r.backendPoId)))]}
+                                      </span>
+                                    )}
+                                  </button>
+                                )}
                                 {(() => {
                                   // Before a PO can ship it must clear approval and be released. Showing the
                                   // shipment verb here (greyed out) read as "shipping is next" when it isn't,
@@ -905,6 +985,18 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
             </>
           )}
         </>
+      )}
+
+      {/* PO comments — the PO's own thread plus one per material. Material threads are shared with
+          Planning's Items Involved / PIs Extracted, so both teams read the same conversation. */}
+      {poCommentTarget && (
+        <CommentsPanel
+          entityType="po"
+          entityId={poCommentTarget.id}
+          entityLabel={poCommentTarget.label}
+          materialScopes={poCommentTarget.materials}
+          onClose={() => setPoCommentTarget(null)}
+        />
       )}
 
       {/* §4A Initiate Transit (per line) */}

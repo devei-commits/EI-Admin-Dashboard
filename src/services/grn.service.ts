@@ -245,6 +245,43 @@ export async function createConsolidatedShipment(payload: ConsolidatedShipmentPa
   return api.post<ShipmentBatchResult>('/api/v1/grn/consolidated-shipment', payload);
 }
 
+// ─── Shipment history (previous trucks raised against a PO) ─────────────────
+export interface ShipmentHistoryLine {
+  item: string;
+  itemCode: string;
+  poQty: number;
+  shippedQty?: number;
+}
+export interface ShipmentHistoryGrn {
+  id: number;
+  grnNo: string;
+  type: string | null;
+  stage: string;
+  status: string | null;
+  shippedQty: number | null;
+  expectedDate: string | null;
+  lineItems: ShipmentHistoryLine[];
+}
+export interface ShipmentHistoryBatch {
+  id: number;
+  code: string;
+  vehicleNo: string | null;
+  driverName: string | null;
+  driverPhone: string | null;
+  transporter: string | null;
+  shippedDate: string | null;
+  vendorInvoiceNo: string | null;
+  expectedArrival: string | null;
+  totalQty: number | null;
+  lineCount: number | null;
+  createdAt: string;
+  grns: ShipmentHistoryGrn[];
+}
+export async function fetchShipmentHistoryForPo(poId: number | string): Promise<ShipmentHistoryBatch[]> {
+  const res = await api.get<ShipmentHistoryBatch[]>(`/api/v1/grn/shipment-history/${poId}`);
+  return Array.isArray(res) ? res : [];
+}
+
 // ─── GRN Tracker (Procurement spec View 5, §7) ───────────────────────────────
 export type GrnWorkflowStepRecord = {
   stage: string;

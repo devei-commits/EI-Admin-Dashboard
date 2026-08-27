@@ -443,7 +443,10 @@ export function inboundGrnActionView(grn: InboundGrnRowInput): { label: string; 
     return { label: 'Complete GRN', prefix: '📦' };
   }
   if (statusView.label === 'IN TRANSIT') {
-    return { label: 'Confirm', prefix: '✓' };
+    // Same action as the LANDED row's "Confirm Receipt" — both open the staged receipt modal in
+    // `confirm-receipt` mode. Two different labels for one action read as two separate steps in the
+    // GRN flow, so they now share the one name.
+    return { label: 'Confirm Receipt', prefix: '✓' };
   }
 
   // Statuses that resolve to a raw label (buildInboundGrnStatusView fallback) — most importantly
@@ -465,7 +468,8 @@ export function inboundGrnActionView(grn: InboundGrnRowInput): { label: string; 
     return { label: 'Send to QC', prefix: '🚦' };
   }
   if (rawStatus === 'Pending' || rawStatus === 'Delayed' || statusView.label === 'PENDING' || statusView.label === 'DELAYED') {
-    return { label: 'Confirm', prefix: '✓' };
+    // Same single receipt step as every other pre-landing status.
+    return { label: 'Confirm Receipt', prefix: '✓' };
   }
   return { label: 'Open', prefix: null };
 }

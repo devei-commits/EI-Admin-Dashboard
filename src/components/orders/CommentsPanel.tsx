@@ -192,11 +192,15 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({
 
       {/* Scope switcher — comment on the order as a whole, or on one of its line items. */}
       {(() => {
-        // The order thread: either the entity this panel opened on, or one supplied by the caller.
+        // The document-level thread: either the entity this panel opened on (a sale order or a
+        // purchase order), or one supplied by the caller.
         const orderTarget =
-          entityType === 'so'
+          entityType === 'so' || entityType === 'po'
             ? { id: entityId, label: entityLabel }
             : orderScope ?? null;
+        // Which entity type the document chip writes to: the panel's own when it opened on a
+        // document, otherwise 'so' (an item/material panel given an orderScope).
+        const documentScopeType: CommentEntityType = entityType === 'po' ? 'po' : 'so';
         const hasAlternatives =
           (Boolean(orderTarget) && (itemScopes?.length ?? 0) > 0) || (materialScopes?.length ?? 0) > 0;
         if (!hasAlternatives) return null;
@@ -206,18 +210,25 @@ export const CommentsPanel: React.FC<CommentsPanelProps> = ({
         <div className="border-b border-border px-3 py-2 max-h-[45vh] min-h-[3.5rem] overflow-y-auto resize-y">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-3 mb-1.5">Comment on</p>
           <div className="flex flex-wrap gap-1.5">
+            {/* The document thread keeps its OWN entity type — hardcoding 'so' here would have
+                filed purchase-order comments onto a sale-order thread with the same numeric id. */}
             <button
               type="button"
-              onClick={() => orderTarget && setScope({ type: 'so', id: orderTarget.id, label: orderTarget.label })}
+              onClick={() =>
+                orderTarget &&
+                setScope({ type: documentScopeType, id: orderTarget.id, label: orderTarget.label })
+              }
               className={`px-2 py-1 rounded-md border text-[11px] font-semibold ${
-                scope.type === 'so'
+                scope.type === documentScopeType
                   ? 'border-brand bg-brand-soft text-brand'
                   : 'border-border bg-surface text-ink-2 hover:bg-surface-3'
               }`}
             >
-              Whole order
+              {entityType === 'po' ? 'Whole PO' : 'Whole order'}
             </button>
-            {itemScopes.map((it, i) => {
+            {/* Optional prop: a PO panel supplies materialScopes only, and this used to crash on
+                `undefined.map` the moment it opened. */}
+            {(itemScopes ?? []).map((it, i) => {
               const disabled = it.id == null;
               const active = scope.type === 'item' && it.id != null && scope.id === it.id;
               return (

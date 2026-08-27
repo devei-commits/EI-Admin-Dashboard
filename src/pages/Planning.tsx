@@ -57,6 +57,14 @@ import {
 } from '../lib/planningBatchesNavigation';
 import { parseQtyLabel, parseQtyLabelInt } from '../lib/parseQtyLabel';
 import { buildPisMaterialScopes } from '../lib/pisMaterialCommentScopes';
+import {
+  BATCH_COVERAGE_LEGEND,
+  batchCoverageBadgeClass,
+  batchCoverageLabel,
+  batchCoverageRowClass,
+  batchCoverageTier,
+  isItemFullyCovered,
+} from '../lib/itemsInvolvedBatchCoverage';
 import MaterialMasterTypeahead from '../components/MaterialMasterTypeahead';
 import { buildMaterialTypeaheadOptions } from '../lib/materialTypeahead';
 import type { FFStatus } from '../types/orderFulfillment';
@@ -9022,6 +9030,11 @@ const Planning = () => {
           0,
         );
         const usedInTotalBatchSize = rows.reduce((sum, row) => sum + (Number(row.sizeKg) || 0), 0);
+        // Coverage tinting. Supply is the item's FREE stock plus its net-open PO balance; the gate
+        // uses the same total printed in the header above, so the two cannot disagree.
+        const coverageSih = Number(usedInModalItem.sihNum) || 0;
+        const coveragePo = Number(usedInModalItem.poQtyNum) || 0;
+        const itemFullyCovered = isItemFullyCovered(usedInTotalRequired, coverageSih, coveragePo);
         return (
           <PlanningModalShell onClose={() => setUsedInModalItem(null)} z="z-[100]">
             <div role="dialog" aria-modal="true" aria-label={`Batches using ${usedInModalItem.code}`} className="bg-surface w-full max-w-4xl rounded-xl shadow-xl border border-border max-h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
@@ -9043,6 +9056,27 @@ const Planning = () => {
                       {plannedNotReleased} more planned batch{plannedNotReleased === 1 ? '' : 'es'} not yet
                       released to production {plannedNotReleased === 1 ? 'is' : 'are'} not counted here.
                     </p>
+                  )}
+                  {/* The figures driving the row tints, stated so the colours can be checked rather
+                      than taken on trust. In-transit stock is deliberately not part of this. */}
+                  {rows.length > 0 && (
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-3">
+                      <span>
+                        SIH <span className="font-semibold text-ink-2">{formatQtyExact(coverageSih, usedInQtyKind)}</span>
+                        {' · '}PO <span className="font-semibold text-ink-2">{formatQtyExact(coveragePo, usedInQtyKind)}</span>
+                      </span>
+                      {BATCH_COVERAGE_LEGEND.filter(
+                        // When the item is covered every row is green, so the other tiers are noise.
+                        (entry) => (itemFullyCovered ? entry.tier === 'green' : entry.tier !== 'green'),
+                      ).map((entry) => (
+                        <span key={entry.tier} className="inline-flex items-center gap-1">
+                          <span className={batchCoverageBadgeClass(entry.tier)}>
+                            {batchCoverageLabel(entry.tier)}
+                          </span>
+                          {entry.label}
+                        </span>
+                      ))}
+                    </div>
                   )}
                 </div>
                 <button
@@ -9073,8 +9107,26 @@ const Planning = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map((row, idx) => (
-                        <tr key={`${row.id}-${idx}`} className={idx % 2 === 0 ? 'bg-surface' : 'bg-surface-2'}>
+                      {rows.map((row, idx) => {
+                        const batchQty = Number(getItemRequiredInBatch(usedInModalItem, row)) || 0;
+                        const coverageTier = batchCoverageTier({
+                          batchQty,
+                          sih: coverageSih,
+                          poQty: coveragePo,
+                          itemFullyCovered,
+                        });
+                        const tintClass = batchCoverageRowClass(coverageTier);
+                        return (
+                        <tr
+                          key={`${row.id}-${idx}`}
+                          // A row with no requirement to judge keeps the plain zebra striping.
+                          className={tintClass || (idx % 2 === 0 ? 'bg-surface' : 'bg-surface-2')}
+                          title={
+                            coverageTier === 'none'
+                              ? undefined
+                              : `${formatQtyExact(batchQty, usedInQtyKind)} ${usedInModalItem.unit} required · SIH ${formatQtyExact(coverageSih, usedInQtyKind)} · PO ${formatQtyExact(coveragePo, usedInQtyKind)}`
+                          }
+                        >
                           <td className="px-3 py-2">
                             {/* Straight to THIS batch — we already hold its row, so the panel opens
                                 without a tab round-trip. The item filter follows the item clicked. */}
@@ -9094,6 +9146,13 @@ const Planning = () => {
                             >
                               {row.batchCode ?? `B-${idx + 1}`}
                             </button>
+                            {/* The tier in words — four tints in one table are hard to separate by
+                                colour alone, and impossible for a colour-blind reader. */}
+                            {coverageTier !== 'none' && (
+                              <span className={`ml-2 ${batchCoverageBadgeClass(coverageTier)}`}>
+                                {batchCoverageLabel(coverageTier)}
+                              </span>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-ink-2">{row.soNumber ?? '—'}</td>
                           <td className="px-3 py-2 text-ink-2">{row.productName ?? row.productCode ?? '—'}</td>
@@ -9101,10 +9160,11 @@ const Planning = () => {
                           <td className="px-3 py-2 text-right font-semibold text-ink">
                             {/* RM is decimal kg (0.195, 120.056) — Math.round wrongly floored sub-1 values to 0.
                                 Show full meaningful decimals for RM; keep whole pieces for PM. */}
-                            {formatQtyExact(getItemRequiredInBatch(usedInModalItem, row), usedInQtyKind)}
+                            {formatQtyExact(batchQty, usedInQtyKind)}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-border bg-surface-2">

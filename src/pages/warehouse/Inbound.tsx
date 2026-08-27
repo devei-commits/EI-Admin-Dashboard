@@ -29,6 +29,7 @@ import {
   type InboundGrnSourceTab,
 } from '../../lib/inboundGrnSourceFilter';
 import GrnCopyReceiptModal from '../../components/warehouse/GrnCopyReceiptModal';
+import GroupedGrnReceiptModal from '../../components/warehouse/GroupedGrnReceiptModal';
 import GrnPostRackingPhotosSection from '../../components/warehouse/GrnPostRackingPhotosSection';
 import type { EvidencePhoto } from '../../components/warehouse/StockCheckEvidenceCapture';
 import { inboundSourceDocRequirementLabel, type InboundGrnSourceDocuments } from '../../lib/inboundGrnSourceDocs';
@@ -251,21 +252,6 @@ function openInboundRowAction(
   onSendToQc?: (grn: GRNRecord) => void,
   onOpenQcCheck?: (grn: GRNRecord, lineItem: LineItem | null) => void,
 ): void {
-  if (actionLabel === 'Confirm') {
-    // Arrival confirmation IS step 1 of the warehouse GRN — vehicle/shipment details and receipt
-    // photos. This used to flip the GRN to LANDED silently, so that capture was skipped entirely
-    // and the operator never saw the first step. Open the staged modal; its step-1 save stamps the
-    // arrival. onConfirmArrival stays as the fallback for a GRN with no resolvable line.
-    const arrivalLine = lineItem ?? (Array.isArray(grn.lineItems) ? (grn.lineItems[0] ?? null) : null);
-    if (arrivalLine) {
-      openReceipt({ grn, lineItem: arrivalLine, mode: 'confirm-receipt' });
-      return;
-    }
-    if (onConfirmArrival) {
-      onConfirmArrival(grn);
-      return;
-    }
-  }
   if (actionLabel === 'Send to QC' && onSendToQc) {
     onSendToQc(grn);
     return;
@@ -295,6 +281,12 @@ function openInboundRowAction(
       lineItem: line,
       mode: actionLabel === 'Confirm Receipt' ? 'confirm-receipt' : 'grn-copy',
     });
+    return;
+  }
+  // No resolvable line — the staged modal cannot open. Arrival confirmation still has a direct
+  // fallback (this was the 'Confirm' branch's behaviour before both labels were merged).
+  if (actionLabel === 'Confirm Receipt' && onConfirmArrival) {
+    onConfirmArrival(grn);
     return;
   }
   openDetail(grn);
@@ -2023,6 +2015,7 @@ const WarehouseInbound = () => {
   const [grnData, setGrnData] = useState<GRNRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
+  const [groupedReceiptOpen, setGroupedReceiptOpen] = useState(false);
   const [selectedGRN, setSelectedGRN] = useState<GRNRecord | null>(null);
   const [selectedGRNMode, setSelectedGRNMode] = useState<'detail' | 'assign-rack'>('detail');
   const [assignRackFocusLineItem, setAssignRackFocusLineItem] = useState<LineItem | null>(null);
@@ -2410,6 +2403,16 @@ const WarehouseInbound = () => {
         {/* Filters and search */}
         <div className="bg-surface rounded-xl border border-border/80 shadow-sm p-4 sm:p-5 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
+            {/* One vehicle often carries several GRNs; this confirms step 1 for all of them at once
+                with a single set of details and one shared upload of the delivery paperwork. */}
+            <button
+              type="button"
+              onClick={() => setGroupedReceiptOpen(true)}
+              className="ml-auto order-last inline-flex items-center gap-1.5 rounded-lg border border-brand bg-brand-soft px-3 py-1.5 text-xs font-semibold text-brand hover:brightness-95"
+              title="Confirm receipt for several GRNs arriving on the same vehicle"
+            >
+              🚚 Grouped Receipt
+            </button>
             {INBOUND_GRN_SOURCE_TABS.map((tab) => (
               <button
                 key={tab.key}
@@ -2657,6 +2660,17 @@ const WarehouseInbound = () => {
                         ) : null}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
+                        {/* View is available at EVERY status. Statuses like "Awaiting QC" have no
+                            actionable step here, which left no way to look back at what had been
+                            submitted — receipt, documents, batches, packs and put-away. */}
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleOpenGrnDetail(grn, lineItem, 'detail'); }}
+                          className="text-xs font-semibold text-brand hover:underline mr-2"
+                          title="View submitted GRN details"
+                        >
+                          View
+                        </button>
                         {view.actionLabel === 'Awaiting QC' ? (
                           <span className="text-xs font-semibold text-ink-3">
                             {view.actionPrefix ? `${view.actionPrefix} ` : ''}
@@ -2697,6 +2711,56 @@ const WarehouseInbound = () => {
             </table>
           </div>
         </div>
+
+        {groupedReceiptOpen ? (
+          <GroupedGrnReceiptModal
+            candidates={grnData.map((g) => ({
+              id: g.id,
+              grnNo: g.grnNo,
+              status: g.status,
+              vendor: g.vendor,
+              poNo: g.poNo,
+              sourceDocuments: g.sourceDocuments ?? null,
+            }))}
+            assignableUsers={assignableUsers}
+            onClose={() => setGroupedReceiptOpen(false)}
+            onApply={async (updates) => {
+              // Applied one GRN at a time so a single failure cannot leave the batch half-written
+              // with no record of which succeeded — each result is reported.
+              const failed: string[] = [];
+              for (const u of updates) {
+                try {
+                  const payload: Record<string, unknown> = { sourceDocuments: u.sourceDocuments };
+                  if (u.receivedDate) payload.receivedDate = u.receivedDate;
+                  if (u.assignedTo) payload.assignedTo = u.assignedTo;
+                  const grn = grnData.find((g) => g.id === u.id);
+                  if (grn && /in[\s_-]?transit/i.test(String(grn.status ?? ''))) {
+                    const arrival = inboundGrnArrivalConfirmPayload(grn.workflowSteps);
+                    payload.status = arrival.status;
+                    payload.workflowSteps = arrival.workflowSteps;
+                    payload.grnDate = arrival.grnDate;
+                    if (!payload.receivedDate) payload.receivedDate = arrival.receivedDate;
+                  }
+                  const res = await updateGRN(u.id, payload as never);
+                  const updated = mapApiToGRNRecord(res);
+                  setGrnData((prev) => prev.map((row) => (row.id === u.id ? updated : row)));
+                } catch {
+                  failed.push(u.grnNo);
+                }
+              }
+              invalidateProcurementGrnCaches();
+              if (failed.length === 0) {
+                showToast(`Receipt confirmed for ${updates.length} GRNs on one vehicle.`);
+                setGroupedReceiptOpen(false);
+              } else {
+                showToast(
+                  `${updates.length - failed.length} of ${updates.length} confirmed. Failed: ${failed.join(', ')}`,
+                  'error',
+                );
+              }
+            }}
+          />
+        ) : null}
 
         {receiptModal ? (
           <GrnCopyReceiptModal

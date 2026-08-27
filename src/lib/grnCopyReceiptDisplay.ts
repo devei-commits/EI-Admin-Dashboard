@@ -471,13 +471,23 @@ export function allGrnReceiptChecksPass(checks: GrnMatchCheckRow[]): boolean {
  *
  * Lorry Receipt is deliberately absent: it is reference-only and does not gate anything.
  */
-export const GRN_REQUIRED_DOC_KEYS = ['bill', 'waybill', 'coa'] as const;
+export const GRN_REQUIRED_DOC_KEYS = [
+  'bill',
+  'waybill',
+  'coa',
+  'delivery_challan',
+  'msds',
+  'weighment_slip',
+] as const;
 export type GrnRequiredDocKey = (typeof GRN_REQUIRED_DOC_KEYS)[number];
 
 export const GRN_REQUIRED_DOC_LABELS: Record<GrnRequiredDocKey, string> = {
   bill: 'Tax Invoice',
   waybill: 'E-Way Bill',
   coa: 'COA',
+  delivery_challan: 'Delivery Challan',
+  msds: 'MSDS',
+  weighment_slip: 'Weighment Slip',
 };
 
 /**
@@ -490,21 +500,65 @@ const REQUIRED_DOC_CHECKLIST_KEY: Record<GrnRequiredDocKey, GrnReceiptChecklistK
   bill: 'invoice',
   waybill: 'ewayBill',
   coa: 'coa',
+  delivery_challan: 'deliveryChallan',
+  msds: 'msds',
+  weighment_slip: 'weighmentSlip',
 };
 
-/** Required documents with no file uploaded yet, in display order. */
+/**
+ * Documents this GRN actually needs, per the dock checklist — including ones already uploaded.
+ * `missingRequiredGrnDocs` answers "what is outstanding"; this answers "what should be asked for",
+ * which is what the step-2 form needs in order to render only the relevant upload slots.
+ */
+/**
+ * Doc keys for a checklist being composed right now (grouped receipt), with NO legacy fallback.
+ *
+ * `requiredGrnDocKeys` falls back to the original three when a stored GRN has no checklist — right
+ * for legacy rows, wrong for a blank form: it demanded Invoice, E-Way Bill and COA before the user
+ * had ticked anything. Here an untouched checklist means "nothing selected yet", so nothing is asked
+ * for until a box is ticked.
+ */
+export function docKeysForChecklist(
+  checklist: Record<string, boolean> | undefined | null,
+): GrnRequiredDocKey[] {
+  if (!checklist) return [];
+  return GRN_REQUIRED_DOC_KEYS.filter((key) => Boolean(checklist[REQUIRED_DOC_CHECKLIST_KEY[key]]));
+}
+
+export function requiredGrnDocKeys(
+  sourceDocuments: GrnCopyReceiptInput['sourceDocuments'],
+): GrnRequiredDocKey[] {
+  const checklist = (sourceDocuments ?? {}).receipt?.checklist;
+  const hasChecklist = checklist != null && Object.values(checklist).some(Boolean);
+  // A GRN with no checklist keeps the ORIGINAL three-document gate. Falling back to all six would
+  // retroactively demand paperwork legacy rows never captured and block them from completing.
+  if (!hasChecklist) return ['bill', 'waybill', 'coa'];
+  return GRN_REQUIRED_DOC_KEYS.filter((key) => Boolean(checklist![REQUIRED_DOC_CHECKLIST_KEY[key]]));
+}
+
+/**
+ * File name stored against any source-doc key, or null. `buildGrnCopyDocumentRows` only describes
+ * bill/waybill/lr/coa, so the checklist-driven documents need a direct read.
+ */
+export function docFileNameFor(
+  sourceDocuments: GrnCopyReceiptInput['sourceDocuments'],
+  key: InboundGrnSourceDocKey,
+): string | null {
+  const entry = (sourceDocuments ?? {})[key];
+  const name = String(entry?.fileName ?? '').trim();
+  return name === '' ? null : name;
+}
+
+/**
+ * Required documents with no file uploaded yet, in display order.
+ * Delegates to `requiredGrnDocKeys` so "what is asked for" and "what is outstanding" can never
+ * disagree — they previously each carried their own copy of the checklist rule.
+ */
 export function missingRequiredGrnDocs(
   sourceDocuments: GrnCopyReceiptInput['sourceDocuments'],
 ): GrnRequiredDocKey[] {
   const docs = sourceDocuments ?? {};
-  const checklist = docs.receipt?.checklist;
-  // A GRN from before the Confirm Receipt checklist existed has no checklist data at all — fall back
-  // to requiring all three rather than silently requiring nothing for it.
-  const hasChecklist = checklist != null && Object.values(checklist).some(Boolean);
-  return GRN_REQUIRED_DOC_KEYS.filter((key) => {
-    if (hasChecklist && !checklist![REQUIRED_DOC_CHECKLIST_KEY[key]]) return false;
-    return !docUploaded(docs, key);
-  });
+  return requiredGrnDocKeys(sourceDocuments).filter((key) => !docUploaded(docs, key));
 }
 
 /** One sentence naming what is still missing, or null when nothing is. */

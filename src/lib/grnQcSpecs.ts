@@ -145,9 +145,28 @@ export function grnQcCompletionBlockers(
   }
   const failed = tests.filter((t) => t.passed === false);
   if (failed.length > 0) {
-    blockers.push(`${failed.length} QC test(s) failed.`);
+    // A MANDATORY failure is absolute — the material cannot be accepted, so it is called out
+    // separately from an optional test failing.
+    const mandatoryFailed = failed.filter((t) => t.mandatory === true);
+    if (mandatoryFailed.length > 0) {
+      blockers.push(
+        `${mandatoryFailed.length} mandatory QC test(s) failed (${mandatoryFailed
+          .map((t) => t.parameter)
+          .slice(0, 3)
+          .join(', ')}${mandatoryFailed.length > 3 ? '…' : ''}) — this GRN cannot be accepted. Use Reject → Vendor Return.`,
+      );
+    }
+    const optionalFailed = failed.length - mandatoryFailed.length;
+    if (optionalFailed > 0) blockers.push(`${optionalFailed} QC test(s) failed.`);
   }
   return blockers;
+}
+
+/** Mandatory tests whose measured result fails the spec — acceptance is impossible while any exist. */
+export function mandatoryQcFailures(
+  payload: GrnQcSpecsStored | null | undefined
+): GrnQcTestRow[] {
+  return collectGrnQcTests(payload).filter((t) => t.mandatory === true && t.passed === false);
 }
 
 export function summarizeGrnQcTests(payload: GrnQcSpecsStored | null | undefined): {

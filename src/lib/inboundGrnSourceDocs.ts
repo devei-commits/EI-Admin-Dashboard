@@ -12,6 +12,12 @@ export type InboundGrnSourceDocKey =
   | 'waybill'
   | 'lr'
   | 'coa'
+  // Dock-checklist documents that also need an upload slot. Without these three, ticking
+  // "Delivery Challan" / "MSDS" / "Weighment Slip" at receipt recorded that they arrived but gave
+  // the operator nowhere to attach them.
+  | 'delivery_challan'
+  | 'msds'
+  | 'weighment_slip'
   | 'to_ref'
   | 'dispatch_labels'
   | 'credit_note'

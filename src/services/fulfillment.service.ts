@@ -448,7 +448,7 @@ export async function fetchBatchesDashboard(params: BatchDashboardParams = {}): 
 /* ── Comments ── */
 
 /** Threads a comment can hang on. 'rm'/'pm' are per-material and shared across Planning + Items Involved. */
-export type CommentEntityType = 'so' | 'batch' | 'item' | 'rm' | 'pm';
+export type CommentEntityType = 'so' | 'batch' | 'item' | 'rm' | 'pm' | 'po';
 
 /**
  * Comment counts for many threads in one request — the panel can show ~30 material chips, and

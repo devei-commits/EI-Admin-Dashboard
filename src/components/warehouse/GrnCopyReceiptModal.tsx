@@ -17,7 +17,10 @@ import type { InboundGrnSourceDocuments } from '../../lib/inboundGrnSourceDocs';
 import {
   allGrnReceiptChecksPass,
   missingRequiredGrnDocs,
+  requiredGrnDocKeys,
   requiredGrnDocsError,
+  docFileNameFor,
+  GRN_REQUIRED_DOC_LABELS,
   allGrnCoreMatchChecksPass,
   buildGrnCopyDocumentRows,
   buildGrnCopyReceiptHeaderFields,
@@ -69,6 +72,7 @@ import { GrnReceiptStepper } from './GrnReceiptStepper';
 import { GrnConfirmReceiptSection } from './GrnConfirmReceiptSection';
 import { GrnConfirmDetailsSection } from './GrnConfirmDetailsSection';
 import { GrnBatchDetailsSection } from './GrnBatchDetailsSection';
+import { DocFileUploadCell } from './DocFileUploadCell';
 import { GrnPackagingListSection } from './GrnPackagingListSection';
 import { GrnGenerateLabelsSection } from './GrnGenerateLabelsSection';
 import { GrnQuarantineQcSection } from './GrnQuarantineQcSection';
@@ -131,116 +135,6 @@ function displayGrnNo(grnNo: string): string {
   return displayInboundGrnNo(grnNo);
 }
 
-type DocFileUploadCellProps = {
-  docKey: GrnCopyDocUploadKey;
-  fileName: string | null;
-  uploaded: boolean;
-  disabled: boolean;
-  onUpload: (file: File) => void;
-  onClear: () => void;
-};
-
-const DocFileUploadCell: React.FC<DocFileUploadCellProps> = ({
-  fileName,
-  uploaded,
-  disabled,
-  onUpload,
-  onClear,
-}) => {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [dragActive, setDragActive] = useState(false);
-
-  const acceptFile = (file: File | undefined): void => {
-    if (!file || disabled) return;
-    onUpload(file);
-  };
-
-  const openFilePicker = (): void => {
-    if (disabled) return;
-    inputRef.current?.click();
-  };
-
-  return (
-    <div className="min-w-[12rem]">
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".pdf,application/pdf,image/*"
-        disabled={disabled}
-        className="hidden"
-        tabIndex={-1}
-        aria-hidden="true"
-        onChange={(e) => {
-          acceptFile(e.target.files?.[0]);
-          e.target.value = '';
-        }}
-      />
-      {uploaded && fileName ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-ok">{fileName} ✓ uploaded</span>
-          {!disabled ? (
-            <button
-              type="button"
-              onClick={onClear}
-              className="text-xs font-medium text-ink-3 underline hover:text-err"
-            >
-              Remove
-            </button>
-          ) : null}
-        </div>
-      ) : (
-        <div
-          role="button"
-          tabIndex={disabled ? -1 : 0}
-          onKeyDown={(e) => {
-            if (disabled) return;
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              openFilePicker();
-            }
-          }}
-          onDragEnter={(e) => {
-            e.preventDefault();
-            if (!disabled) setDragActive(true);
-          }}
-          onDragOver={(e) => {
-            e.preventDefault();
-            if (!disabled) setDragActive(true);
-          }}
-          onDragLeave={(e) => {
-            e.preventDefault();
-            setDragActive(false);
-          }}
-          onDrop={(e) => {
-            e.preventDefault();
-            setDragActive(false);
-            acceptFile(e.dataTransfer.files?.[0]);
-          }}
-          className={`flex min-h-[2.25rem] w-full items-center justify-center gap-1 rounded-lg border border-dashed px-3 py-2 text-xs transition-colors ${
-            disabled
-              ? 'cursor-not-allowed border-border text-ink-4 opacity-60'
-              : dragActive
-                ? 'cursor-copy border-ok bg-ok-soft text-ok'
-                : 'cursor-pointer border-border text-ink-2 hover:border-border hover:bg-surface-2'
-          }`}
-        >
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={(e) => {
-              e.stopPropagation();
-              openFilePicker();
-            }}
-            className="text-xs font-semibold text-ink underline-offset-2 hover:underline disabled:no-underline disabled:text-ink-4"
-          >
-            Choose file
-          </button>
-          <span className="text-xs font-normal text-ink-3">· drag &amp; drop</span>
-        </div>
-      )}
-    </div>
-  );
-};
 
 const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   grn,
@@ -486,6 +380,8 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   const docsLocked = grnReceiptDocumentsLocked(mode, grn);
   /** Required receipt documents still missing — drives the * outlines and the step-2 block. */
   const missingDocKeys = useMemo(() => missingRequiredGrnDocs(sourceDocuments), [sourceDocuments]);
+  /** Only the documents the dock checklist says arrived get an upload slot. */
+  const requiredDocKeys = useMemo(() => requiredGrnDocKeys(sourceDocuments), [sourceDocuments]);
 
   const updateDocRef = (key: GrnCopyDocRefKey, ref: string): void => {
     setDocRefs((prev) => ({ ...prev, [key]: ref }));
@@ -1313,8 +1209,19 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                 Receipt documents <span className="text-err">*</span>
               </h3>
               <p className="mt-1 text-xs text-ink-3">
-                Invoice, E-Way Bill and COA are required — <strong>Generate Labels</strong> (step 5) stays
-                disabled until all three are on file. Lorry Receipt is reference-only.
+                {requiredDocKeys.length > 0 ? (
+                  <>
+                    Asked for per the <strong>Confirm Receipt</strong> checklist —{' '}
+                    {requiredDocKeys.map((k) => GRN_REQUIRED_DOC_LABELS[k]).join(', ')}.{' '}
+                    <strong>Generate Labels</strong> (step 5) stays disabled until these are on file.
+                    Lorry Receipt is reference-only.
+                  </>
+                ) : (
+                  <>
+                    The dock checklist records no uploadable documents for this shipment, so none are
+                    required here. <strong>Generate Labels</strong> (step 5) is not blocked on documents.
+                  </>
+                )}
               </p>
               {missingDocKeys.length > 0 && (
                 <p className="mt-2 rounded-md border border-err bg-err-soft px-2 py-1 text-[11px] font-semibold text-err">
@@ -1322,7 +1229,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                 </p>
               )}
               <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                {(['bill', 'waybill', 'coa'] as const).map((key) => {
+                {requiredDocKeys.map((key) => {
                   const row = documentRows.find((d) => d.key === key);
                   return (
                     <div
@@ -1332,9 +1239,13 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                       }`}
                     >
                       <div className="text-xs font-semibold text-ink">
-                        {row?.docType ?? key} <span className="text-err">*</span>
+                        {/* documentRows only describes bill/waybill/lr/coa; the checklist-driven
+                            documents fall back to their canonical label rather than a raw key. */}
+                        {row?.docType ?? GRN_REQUIRED_DOC_LABELS[key] ?? key} <span className="text-err">*</span>
                       </div>
-                      {key !== 'coa' ? (
+                      {/* Only these carry a reference number; the rest are upload-only. Keying the
+                          input on anything else would write a ref under a key nothing reads. */}
+                      {key === 'bill' || key === 'waybill' ? (
                         <input
                           type="text"
                           value={docRefs[key as GrnCopyDocRefKey]}
@@ -1346,8 +1257,8 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                       ) : null}
                       <DocFileUploadCell
                         docKey={key}
-                        fileName={row?.fileName ?? null}
-                        uploaded={row?.uploaded ?? false}
+                        fileName={docFileNameFor(sourceDocuments, key)}
+                        uploaded={Boolean(docFileNameFor(sourceDocuments, key))}
                         disabled={docsLocked || uploadingDoc === key}
                         onUpload={(file) => void handleDocFileUpload(key, file)}
                         onClear={() => void clearDocFile(key)}

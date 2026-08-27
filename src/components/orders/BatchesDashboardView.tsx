@@ -4,9 +4,9 @@ import {
   Package, AlertTriangle, CheckCircle,
 } from 'lucide-react';
 import type { BatchDashboardRow, StageLogEntry } from '../../types/orderFulfillment';
-import { fetchBatchesDashboard } from '../../services/fulfillment.service';
+import { fetchBatchesDashboard, fetchFulfillmentOrderById } from '../../services/fulfillment.service';
 import { BATCH_STAGE_FILTER_OPTIONS } from '../../constants/orderFulfillment';
-import { CommentsPanel } from './CommentsPanel';
+import { CommentsPanel, type CommentScopeOption } from './CommentsPanel';
 import { ProcSectionHeader, ProcFilterBar, ProcThead } from '../procurement/ProcSection';
 import { TableSkeleton } from '../ui/Skeleton';
 import { EmptyState } from '../ui/EmptyState';
@@ -207,8 +207,34 @@ export const BatchesDashboardView: React.FC = () => {
   const [flaggedOnly, setFlaggedOnly] = useState(false);
   const [dueBefore, setDueBefore] = useState('');
 
-  // Comments panel (per batch)
-  const [commentTarget, setCommentTarget] = useState<{ id: number; label: string } | null>(null);
+  // Comments panel (per batch) — defaults to the batch's own thread (stage history + comments),
+  // but also exposes the whole sale order and the individual product line as switchable scopes so
+  // a comment can be filed at whichever level it actually belongs to, not just the batch.
+  const [commentTarget, setCommentTarget] = useState<{ id: number; label: string; soId: number; soNo: string } | null>(null);
+  /**
+   * Line items of this batch's SO, so a comment can be filed against a specific product instead of
+   * only the batch. Item threads are keyed by planning_extracted.id (shared with Planning's PIs
+   * Extracted view and the SO Dashboard's comment panel); a line with no plan yet has none and is
+   * offered as disabled rather than hidden.
+   */
+  const [commentItemScopes, setCommentItemScopes] = useState<CommentScopeOption[]>([]);
+  useEffect(() => {
+    if (!commentTarget) { setCommentItemScopes([]); return; }
+    let alive = true;
+    void fetchFulfillmentOrderById(commentTarget.soId)
+      .then((so) => {
+        if (!alive || !so) return;
+        setCommentItemScopes(
+          (so.items ?? []).map((it) => ({
+            id: it.planningExtractedId ?? null,
+            label: `${it.productName}${it.pack ? ` · ${it.pack}` : ''}`,
+            disabledReason: 'Not linked to a plan yet — comment on the whole order instead',
+          })),
+        );
+      })
+      .catch(() => { if (alive) setCommentItemScopes([]); });
+    return () => { alive = false; };
+  }, [commentTarget]);
   const [detailRow, setDetailRow] = useState<BatchDashboardRow | null>(null);
 
   const load = useCallback(async () => {
@@ -485,7 +511,15 @@ export const BatchesDashboardView: React.FC = () => {
                       {/* History & Comments */}
                       <td className="px-3 py-2.5 align-top">
                         <button
-                          onClick={(e) => { e.stopPropagation(); setCommentTarget({ id: row.id, label: `${row.batch.batchNo || row.batch.bprNo || 'Batch'} · ${row.soNo}` }); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCommentTarget({
+                              id: row.id,
+                              label: `${row.batch.batchNo || row.batch.bprNo || 'Batch'} · ${row.soNo}`,
+                              soId: row.soId,
+                              soNo: row.soNo,
+                            });
+                          }}
                           className="relative p-1.5 rounded-lg hover:bg-brand-soft text-ink-4 hover:text-brand transition-colors"
                           title="History & comments"
                           aria-label="History & comments"
@@ -542,6 +576,8 @@ export const BatchesDashboardView: React.FC = () => {
             entityType="batch"
             entityId={commentTarget.id}
             entityLabel={commentTarget.label}
+            orderScope={{ id: commentTarget.soId, label: commentTarget.soNo }}
+            itemScopes={commentItemScopes}
             onClose={() => setCommentTarget(null)}
           />
         </>

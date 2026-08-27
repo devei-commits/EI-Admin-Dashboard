@@ -26,7 +26,15 @@ describe('grnQcAutoPass', () => {
 
   it('auto-passes pass-fail and select', () => {
     expect(deriveAutoPassedFromResult(testRow({ outputType: 'pass-fail', result: 'Pass' }))).toBe(true);
-    expect(deriveAutoPassedFromResult(testRow({ outputType: 'select', result: 'Clear pale-yellow' }))).toBe(true);
+    // The fixture's spec is the numeric range "6.5 – 7.5", so a descriptive answer is not a
+    // measurement and cannot be judged — it is awaiting, which blocks completion rather than
+    // passing an unverifiable entry. With a descriptive spec the select still auto-passes.
+    expect(deriveAutoPassedFromResult(testRow({ outputType: 'select', result: 'Clear pale-yellow' }))).toBe(null);
+    expect(
+      deriveAutoPassedFromResult(
+        testRow({ outputType: 'select', specLimit: 'Clear pale-yellow', result: 'Clear pale-yellow' }),
+      ),
+    ).toBe(true);
     expect(deriveAutoPassedFromResult(testRow({ result: 'pending' }))).toBe(null);
   });
 

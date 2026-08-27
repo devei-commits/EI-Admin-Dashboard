@@ -157,7 +157,7 @@ import type {
   QuoteLine,
 } from '../../types/procurement.types';
 import StockCheckUpdateModal from './StockCheckUpdateModal';
-import { Search, X, Package, Loader2, FileText } from 'lucide-react';
+import { Search, X, Package, Loader2, FileText, MessageSquare } from 'lucide-react';
 import { openPurchaseOrderPdf } from '../../lib/purchaseOrderPdf';
 import {
   PAYMENT_TERMS_TYPE_OPTIONS,
@@ -168,6 +168,7 @@ import {
   type PaymentTermsStructuredType,
 } from '../../lib/paymentTermsStructured';
 import { PaymentTermsDisplay } from '../../components/procurement/PaymentTermsDisplay';
+import { CommentsPanel } from '../../components/orders/CommentsPanel';
 import { splitLinesByQuantity, lineQtyNumber } from '../../lib/splitPoByQuantity';
 import { poExpectedDateFromPr } from '../../lib/poExpectedDateFromPr';
 import {
@@ -1136,6 +1137,41 @@ const Procurement: React.FC = () => {
     creditDays: '0',
   });
   const [selectedDraftPO, setSelectedDraftPO] = useState<DraftPO | null>(null);
+  /**
+   * Comments panel for a purchase order: the PO's own thread plus a thread per material on it.
+   *
+   * The material threads are keyed by raw_materials.id / pack_materials.id — the SAME keys Planning
+   * uses in Items Involved and PIs Extracted — so a note procurement leaves on a material here is
+   * the conversation the planning team already reads, not a second one they never see.
+   */
+  const [poCommentTarget, setPoCommentTarget] = useState<{
+    id: number;
+    label: string;
+    materials: { type: 'rm' | 'pm'; id: number; label: string }[];
+  } | null>(null);
+
+  /** PO line items -> material comment threads. Lines with no master link are skipped: a thread
+   *  keyed on nothing would be unreachable from Planning, which is the point of sharing them. */
+  const poMaterialCommentScopes = (
+    lines: { raw_material_id?: number; pack_material_id?: number; item?: string; itemCode?: string }[] | undefined,
+  ): { type: 'rm' | 'pm'; id: number; label: string }[] => {
+    const out: { type: 'rm' | 'pm'; id: number; label: string }[] = [];
+    const seen = new Set<string>();
+    for (const line of lines ?? []) {
+      const rm = Number(line.raw_material_id);
+      const pm = Number(line.pack_material_id);
+      const isRm = Number.isFinite(rm) && rm > 0;
+      const id = isRm ? rm : pm;
+      if (!Number.isFinite(id) || id <= 0) continue;
+      const type: 'rm' | 'pm' = isRm ? 'rm' : 'pm';
+      const key = `${type}-${id}`;
+      // One chip per material even when it appears on several lines of the PO.
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ type, id, label: String(line.item ?? line.itemCode ?? key).trim() || key });
+    }
+    return out;
+  };
   /** Manual "New PR" modal (Direct PR source). */
   const [showNewPr, setShowNewPr] = useState(false);
   /** Manual "New PO" modal (Direct PO — no PR). */
@@ -7645,6 +7681,21 @@ const Procurement: React.FC = () => {
                 </button>
                 {po.backendPoId && (
                   <button
+                    onClick={() =>
+                      setPoCommentTarget({
+                        id: Number(poBackendId(String(po.backendPoId))),
+                        label: `${po.poNumber} · ${po.vendor}`,
+                        materials: poMaterialCommentScopes(po.lineItems),
+                      })
+                    }
+                    className="px-4 py-2 rounded-lg border border-border text-ink-2 text-sm font-semibold hover:bg-surface-3 transition inline-flex items-center gap-1.5"
+                    title="Comments — on this PO, or on a material (shared with Planning)"
+                  >
+                    <MessageSquare className="h-4 w-4" /> Comments
+                  </button>
+                )}
+                {po.backendPoId && (
+                  <button
                     onClick={() => { setSelectedPO(null); applyRouteState('Procurement', 'GRN Tracker'); }}
                     className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-bold hover:bg-brand-press transition"
                   >
@@ -7843,6 +7894,21 @@ const Procurement: React.FC = () => {
                   >
                     <FileText className="h-3.5 w-3.5" /> PO PDF
                   </button>
+                  {dpo.backendPoId && (
+                    <button
+                      onClick={() =>
+                        setPoCommentTarget({
+                          id: Number(poBackendId(String(dpo.backendPoId))),
+                          label: `${dpo.dpoNumber} · ${dpo.vendor}`,
+                          materials: poMaterialCommentScopes(dpo.lineItems),
+                        })
+                      }
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-ink-2 text-xs font-semibold hover:bg-surface-3"
+                      title="Comments — on this PO, or on a material (shared with Planning)"
+                    >
+                      <MessageSquare className="h-3.5 w-3.5" /> Comments
+                    </button>
+                  )}
                   <button
                     onClick={() => setSelectedDraftPO(null)}
                     className="text-ink-4 hover:text-ink-2 text-xl leading-none transition-colors"
@@ -8088,6 +8154,18 @@ const Procurement: React.FC = () => {
           </div>
         );
       })()}
+
+      {/* PO comments — the PO's own thread, plus one per material on it. Material threads are the
+          same ones Planning reads, so procurement and planning share the conversation. */}
+      {poCommentTarget && (
+        <CommentsPanel
+          entityType="po"
+          entityId={poCommentTarget.id}
+          entityLabel={poCommentTarget.label}
+          materialScopes={poCommentTarget.materials}
+          onClose={() => setPoCommentTarget(null)}
+        />
+      )}
 
       {/* ── Split PO Modal ── */}
       {splitPOTarget && (() => {

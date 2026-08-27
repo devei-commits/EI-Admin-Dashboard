@@ -194,7 +194,31 @@
  --st-green-bg: rgba(52, 199, 89, .13); --st-green-fg: #248a3d;
  --st-amber-bg: rgba(255, 149, 0, .14); --st-amber-fg: #a05a00;
  --st-red-bg: rgba(255, 59, 48, .11); --st-red-fg: #c9281f;
+ /* Batch-coverage tier between green and amber (Items Involved → Batches using). Alpha-based like
+    its neighbours, so it sits correctly on both light and dark surfaces. */
+ --st-pink-bg: rgba(236, 72, 153, .12); --st-pink-fg: #9d174d;
  --st-neutral-bg: rgba(0, 0, 0, .05); --st-neutral-fg: #52525a;
+
+ /* Batch-coverage row tints — deliberately stronger than the --st-*-bg badge tones above.
+    A whole table row needs far more saturation than a small pill to register as colour-coded, but
+    the badge tokens are used app-wide (pills, banners, status chips), so raising THEIR alpha would
+    restyle the entire application. These are separate, used only by batchCoverageRowClass, and are
+    held at an alpha that keeps `text-ink` body copy readable on top.
+
+    Hues are pushed apart on purpose. The first attempt used a warm red and a warm pink, and at ~32%
+    alpha over white BOTH resolve to a light pink — indistinguishable. Red is now a deep true red at
+    a heavier alpha so it reads dark, pink is pushed to violet (hue ~272) so it reads cool, and the
+    middle tier is a true yellow rather than orange so it cannot be mistaken for red. Roughly 90° of
+    hue separates each neighbour. */
+ --cov-green-bg: rgba(21, 128, 61, .30);   /* hue 142 — green   */
+ --cov-pink-bg: rgba(147, 51, 234, .26);   /* hue 272 — violet  */
+ --cov-amber-bg: rgba(250, 204, 21, .55);  /* hue  48 — yellow  */
+ --cov-red-bg: rgba(190, 18, 18, .42);     /* hue   0 — deep red */
+ /* Accent bars and label pills — solid, so the tier reads even where the tint is subtle. */
+ --cov-green-fg: #15803d;
+ --cov-pink-fg: #7e22ce;
+ --cov-amber-fg: #a16207;
+ --cov-red-fg: #be1212;
  --e1: 0 .5px 1px rgba(0, 0, 0, .04), 0 1px 2px rgba(0, 0, 0, .04);
  --e2: 0 2px 6px rgba(0, 0, 0, .05), 0 8px 24px rgba(0, 0, 0, .05);
  --e3: 0 8px 24px rgba(0, 0, 0, .10), 0 32px 64px rgba(0, 0, 0, .14);
@@ -237,6 +261,8 @@
  --color-err-soft: var(--st-red-bg);
  --color-info: var(--st-blue-fg);
  --color-info-soft: var(--st-blue-bg);
+ --color-pink: var(--st-pink-fg);
+ --color-pink-soft: var(--st-pink-bg);
  --color-neut: var(--st-neutral-fg);
  --color-neut-soft: var(--st-neutral-bg);
  --radius-r-sm: var(--r-sm);
