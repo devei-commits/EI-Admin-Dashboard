@@ -197,7 +197,7 @@ export const PO_PAYMENT_MODE_OPTIONS: Array<{ value: string; label: string }> = 
 // ─── §9.2 PO workflow ────────────────────────────────────────────────────────
 export type PoStatus =
   | 'draft' | 'awaiting_payment' | 'issued' | 'accepted'
-  | 'on_hold' | 'terminated' | 'completed';
+  | 'on_hold' | 'terminated' | 'cancelled' | 'completed';
 
 export const PO_STATUS_CONFIG: Record<PoStatus, StatusConfig> = {
   draft:            mk('Draft', 'slate'),
@@ -206,6 +206,7 @@ export const PO_STATUS_CONFIG: Record<PoStatus, StatusConfig> = {
   accepted:         mk('Accepted', 'emerald'),
   on_hold:          mk('On Hold', 'orange'),
   terminated:       mk('Terminated', 'red'),
+  cancelled:        mk('Cancelled', 'red'),
   completed:        mk('Completed', 'emerald'),
 };
 

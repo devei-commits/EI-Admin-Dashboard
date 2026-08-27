@@ -9,6 +9,7 @@ import {
   batchCoverageRowClass,
   batchCoverageTier,
   isItemFullyCovered,
+  itemCoverageTierFromBatches,
   type BatchCoverageTier,
 } from '../itemsInvolvedBatchCoverage';
 
@@ -97,6 +98,71 @@ describe('batchCoverageTier', () => {
       'yellow', // 35,000 — over stock, within stock + PO
       'pink', // 3,000
     ]);
+  });
+});
+
+describe('itemCoverageTierFromBatches', () => {
+  it('reds the item when ANY batch is red, whatever else is there', () => {
+    expect(itemCoverageTierFromBatches(['green', 'pink', 'yellow', 'red'])).toBe('red');
+    expect(itemCoverageTierFromBatches(['red', 'green'])).toBe('red');
+  });
+
+  it('falls to yellow only when no batch is red', () => {
+    expect(itemCoverageTierFromBatches(['green', 'pink', 'yellow'])).toBe('yellow');
+    expect(itemCoverageTierFromBatches(['yellow', 'green'])).toBe('yellow');
+  });
+
+  it('falls to pink only when no batch is red or yellow', () => {
+    expect(itemCoverageTierFromBatches(['green', 'pink', 'green'])).toBe('pink');
+  });
+
+  it('stays green only when every batch is green', () => {
+    expect(itemCoverageTierFromBatches(['green', 'green', 'green'])).toBe('green');
+  });
+
+  it('holds the full priority order red > yellow > pink > green', () => {
+    const all: BatchCoverageTier[] = ['green', 'pink', 'yellow', 'red'];
+    // Drop the worst each time; the next one down must take over.
+    expect(itemCoverageTierFromBatches(all)).toBe('red');
+    expect(itemCoverageTierFromBatches(all.slice(0, 3))).toBe('yellow');
+    expect(itemCoverageTierFromBatches(all.slice(0, 2))).toBe('pink');
+    expect(itemCoverageTierFromBatches(all.slice(0, 1))).toBe('green');
+  });
+
+  it('skips untinted batches instead of letting them outrank a real verdict', () => {
+    // A batch with no requirement carries no verdict — it must not dilute a red sibling, nor
+    // count as satisfied and hold an otherwise-green item back.
+    expect(itemCoverageTierFromBatches(['none', 'red'])).toBe('red');
+    expect(itemCoverageTierFromBatches(['none', 'green'])).toBe('green');
+  });
+
+  it('leaves an item with no judgeable batches untinted', () => {
+    expect(itemCoverageTierFromBatches([])).toBe('none');
+    expect(itemCoverageTierFromBatches(['none', 'none'])).toBe('none');
+  });
+
+  it('rolls the real 13-batch item up to yellow', () => {
+    // Item 5000002 — five pink batches and one yellow, no red: the yellow wins.
+    const sih = 30000;
+    const po = 40000;
+    const covered = isItemFullyCovered(120271, sih, po);
+    const tiers = [500, 23000, 21000, 25000, 35000, 3000].map((q) => tier(q, sih, po, covered));
+    expect(itemCoverageTierFromBatches(tiers)).toBe('yellow');
+  });
+
+  it('rolls a fully covered item up to green', () => {
+    const covered = isItemFullyCovered(5000, 4000, 2000);
+    expect(covered).toBe(true);
+    const tiers = [1000, 3500, 500].map((q) => tier(q, 4000, 2000, covered));
+    expect(itemCoverageTierFromBatches(tiers)).toBe('green');
+  });
+
+  it('rolls an item with one oversized batch up to red', () => {
+    const covered = isItemFullyCovered(200000, 30000, 40000);
+    expect(covered).toBe(false);
+    const tiers = [500, 80000, 3000].map((q) => tier(q, 30000, 40000, covered));
+    expect(tiers).toEqual(['pink', 'red', 'pink']);
+    expect(itemCoverageTierFromBatches(tiers)).toBe('red');
   });
 });
 

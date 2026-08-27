@@ -9,6 +9,7 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { Printer } from 'lucide-react';
 import type { GrnBatchRow } from '../../lib/inboundGrnBatchesMeta';
 import type { GrnPackagingRow } from '../../lib/inboundGrnPackagingMeta';
+import { packLabelFields, printPackLabels } from '../../lib/grnPackLabelPrint';
 
 export interface GrnGenerateLabelsSectionProps {
   rows: GrnPackagingRow[];
@@ -23,26 +24,6 @@ export interface GrnGenerateLabelsSectionProps {
   onPrintBlocked?: () => void;
 }
 
-/** yyyy-mm-dd → "MAY/2026". Falls back to the raw value when unparseable. */
-function formatMonYear(date: string | null | undefined): string {
-  const raw = String(date ?? '').trim();
-  if (!raw) return '—';
-  const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(raw);
-  if (!m) return raw;
-  const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-  const mi = Number(m[2]) - 1;
-  return mi >= 0 && mi < 12 ? `${months[mi]}/${m[1]}` : raw;
-}
-
-function esc(v: unknown): string {
-  return String(v ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 export const GrnGenerateLabelsSection: React.FC<GrnGenerateLabelsSectionProps> = ({
   rows,
   batches,
@@ -55,19 +36,8 @@ export const GrnGenerateLabelsSection: React.FC<GrnGenerateLabelsSectionProps> =
   onPrintBlocked,
 }) => {
   const gridRef = useRef<HTMLDivElement>(null);
-
-  const fieldsFor = (row: GrnPackagingRow): Array<{ label: string; value: string }> => {
-    const batch = batches[row.batchIndex];
-    return [
-      { label: 'Product', value: productName || '—' },
-      { label: 'Product Code', value: productCode || '—' },
-      { label: 'Vendor', value: vendor || '—' },
-      { label: 'Vendor Batch', value: batch?.vendorBatchNo || '—' },
-      { label: 'MFG', value: formatMonYear(batch?.mfgDate) },
-      { label: 'EXP', value: formatMonYear(batch?.expDate) },
-      { label: 'Qty in pack', value: row.qty != null ? `${row.qty}${unit ? ` ${unit}` : ''}` : '—' },
-    ];
-  };
+  const ctx = { batches, productName, productCode, vendor, unit };
+  const fieldsFor = (row: GrnPackagingRow) => packLabelFields(row, ctx);
 
   const handlePrint = (): void => {
     if (!rows.length) return;
@@ -75,54 +45,11 @@ export const GrnGenerateLabelsSection: React.FC<GrnGenerateLabelsSectionProps> =
     const canvases = gridRef.current
       ? Array.from(gridRef.current.querySelectorAll<HTMLCanvasElement>('canvas'))
       : [];
-    const win = window.open('', '_blank', 'width=900,height=760');
-    if (!win) {
+    const qrDataUrls = rows.map((_, i) => canvases[i]?.toDataURL('image/png') ?? '');
+    if (!printPackLabels(rows, qrDataUrls, ctx)) {
       onPrintBlocked?.();
       return;
     }
-    const cards = rows
-      .map((row, i) => {
-        const qr = canvases[i]?.toDataURL('image/png') ?? '';
-        const fieldRows = fieldsFor(row)
-          .map((f) => `<div class="row"><span class="k">${esc(f.label)}</span><span class="v">${esc(f.value)}</span></div>`)
-          .join('');
-        return `
-          <article class="label">
-            <div class="pkg">📦 ${esc(row.packagingNo)}</div>
-            <div class="qrwrap">${qr ? `<img src="${esc(qr)}" alt="QR" />` : ''}</div>
-            <div class="rows">${fieldRows}</div>
-            <div class="pkgfoot">${esc(row.packagingNo)}</div>
-          </article>`;
-      })
-      .join('');
-
-    win.document.write(`<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Pack Labels</title>
-    <style>
-      body { font-family: Arial, sans-serif; padding: 12px; color: #0f172a; }
-      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-      .label { border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; break-inside: avoid; }
-      .pkg { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
-      .qrwrap { text-align: center; margin-bottom: 8px; }
-      .qrwrap img { width: 150px; height: 150px; object-fit: contain; }
-      .row { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; margin: 3px 0; }
-      .k { color: #64748b; font-weight: 600; }
-      .v { color: #0f172a; font-weight: 700; text-align: right; }
-      .pkgfoot { margin-top: 8px; text-align: center; font-family: monospace; font-size: 11px; color: #334155; }
-      @media print { body { padding: 0; } .label { border: 1px solid #000; page-break-inside: avoid; } }
-    </style>
-  </head>
-  <body>
-    <div class="grid">${cards}</div>
-    <script>
-      window.onload = function () { window.print(); window.onafterprint = function () { window.close(); }; };
-    </script>
-  </body>
-</html>`);
-    win.document.close();
     onPrinted?.();
   };
 

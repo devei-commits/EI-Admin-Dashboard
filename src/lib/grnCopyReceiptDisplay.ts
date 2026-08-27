@@ -366,10 +366,13 @@ export function buildGrnMatchChecks(input: {
   const verifiedPrice =
     Number(input.verifiedUnitPrice) > 0 ? Number(input.verifiedUnitPrice) : poPrice;
 
-  const invoiceDoc = input.documentRows.find((d) => d.key === 'bill');
-  const ewbDoc = input.documentRows.find((d) => d.key === 'waybill');
-  const coaDoc = input.documentRows.find((d) => d.key === 'coa');
-  const docsComplete = Boolean(invoiceDoc?.uploaded && ewbDoc?.uploaded && coaDoc?.uploaded);
+  // Only demand the docs this GRN's own dock checklist asked for (falls back to the original
+  // Invoice/EWB/COA three for legacy GRNs with no checklist) — not every possible document.
+  // Checking Invoice/EWB/COA unconditionally left this row permanently unpassable whenever the
+  // checklist said e.g. no E-Way Bill came with the shipment.
+  const requiredDocs = requiredGrnDocKeys(input.grn.sourceDocuments);
+  const docsComplete = requiredDocs.every((key) => docUploaded(input.grn.sourceDocuments, key));
+  const requiredDocsLabel = requiredDocs.map((key) => GRN_REQUIRED_DOC_LABELS[key]).join(' + ') || 'none required';
   const labelCount = Math.max(0, Number(input.existingLabelCount) || 0);
 
   const qtyMatch = (a: number, b: number) => Math.abs(a - b) <= 0.0001;
@@ -379,13 +382,18 @@ export function buildGrnMatchChecks(input: {
       label: `Shipped Qty (vendor ${formatQty(shippedQty, line?.unit)}) vs Physical (${formatQty(physicalTotal, line?.unit)})`,
       pass: qtyMatch(shippedQty, physicalTotal),
     },
+    // Checked against shippedQty, not the full poQty: a vendor can ship a PO in partial lots (e.g.
+    // 100 of 10,000 pcs now, the rest in later GRNs), and this GRN only covers what was actually
+    // shipped this time. shippedQty already falls back to poQty when nothing was recorded (see
+    // above), so a full/final shipment is unaffected — this only changes partial-shipment GRNs,
+    // which previously always failed here comparing against the PO's full quantity.
     {
-      label: `Physical (${formatQty(physicalTotal, line?.unit)}) vs PO Qty (${formatQty(poQty, line?.unit)})`,
-      pass: qtyMatch(physicalTotal, poQty),
+      label: `Physical (${formatQty(physicalTotal, line?.unit)}) vs Shipped Qty (${formatQty(shippedQty, line?.unit)})`,
+      pass: qtyMatch(physicalTotal, shippedQty),
     },
     {
-      label: `Billed Qty (${formatQty(billedQty, line?.unit)}) vs PO Qty (${formatQty(poQty, line?.unit)})`,
-      pass: qtyMatch(billedQty, poQty),
+      label: `Billed Qty (${formatQty(billedQty, line?.unit)}) vs Shipped Qty (${formatQty(shippedQty, line?.unit)})`,
+      pass: qtyMatch(billedQty, shippedQty),
     },
     {
       label: `Per Unit Price (${formatInr(verifiedPrice)}) vs PO Price (${formatInr(poPrice)})`,
@@ -396,7 +404,7 @@ export function buildGrnMatchChecks(input: {
       pass: receivedPacks === declaredPacks,
     },
     {
-      label: 'Documents received (Invoice + EWB + COA)',
+      label: `Documents received (${requiredDocsLabel})`,
       pass: docsComplete,
     },
     {

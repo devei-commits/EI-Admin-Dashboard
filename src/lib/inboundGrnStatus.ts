@@ -138,6 +138,43 @@ export function inboundGrnSendToQuarantineQcPayload(
   };
 }
 
+/**
+ * Put-away recorded in Assign Rack: rack + zone + post-racking photos are saved and the GRN hands
+ * off to GRN Copy.
+ *
+ * This used to persist with an EMPTY payload — rack, zone and photos landed, but `status` and
+ * `workflow_steps` were never sent, so a racked GRN sat on "On Hold" with a blank stepper and
+ * looked like the save had not happened (GRN-2026-0197: location_prefix DEFAULT saved, status
+ * still On Hold, workflow_steps still just Receipt Confirmed / Sent to QC).
+ *
+ * Two things advance here:
+ *  - Steps: by the time stock is being racked the PO was received, the qty was checked and QC is
+ *    done, so those three are stamped. 'Label Generation' is deliberately NOT stamped — labels are
+ *    generated in GRN Copy, and that step is also what the backend accepts as proof labels exist
+ *    (`grnCompletionBlockers`), so stamping it here would let a GRN complete with no labels at all.
+ *  - Status: a GRN quarantined into QC ('On Hold') is released to 'Under GRN' once QC has PASSED,
+ *    matching what GRN Copy does on its own hold release. A failed or still-pending QC stays on
+ *    hold — racking must not be a way out of quarantine.
+ */
+export const INBOUND_GRN_RACK_ASSIGNED_STEP = 'Rack Assigned';
+
+export function inboundGrnRackAssignedPayload(grn: InboundGrnStatusInput): {
+  status?: string;
+  workflowSteps: string[];
+} {
+  let steps = appendInboundGrnWorkflowStep(grn.workflowSteps, INBOUND_GRN_RECEIPT_CONFIRMED_STEP);
+  steps = appendInboundGrnWorkflowStep(steps, 'PO Received');
+  steps = appendInboundGrnWorkflowStep(steps, 'Qty Check');
+  if (isInboundGrnQcComplete(grn)) {
+    steps = appendInboundGrnWorkflowStep(steps, 'QC Inspection');
+  }
+  steps = appendInboundGrnWorkflowStep(steps, INBOUND_GRN_RACK_ASSIGNED_STEP);
+
+  const status = String(grn.status ?? '').trim();
+  const releaseFromHold = status === 'On Hold' && isInboundGrnQcTested(grn);
+  return releaseFromHold ? { status: 'Under GRN', workflowSteps: steps } : { workflowSteps: steps };
+}
+
 export function inboundGrnVerifiedAfterLabelsPayload(
   existingSteps?: string[] | null,
 ): { status: string; workflowSteps: string[] } {

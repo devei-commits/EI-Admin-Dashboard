@@ -58,18 +58,23 @@ describe('grnCopyReceiptDisplay', () => {
   });
 
   it('detects core mismatch when billed qty differs from PO', () => {
+    const sourceDocuments = {
+      bill: { fileName: 'inv.pdf' },
+      waybill: { fileName: 'ewb.pdf' },
+      coa: { fileName: 'coa.pdf' },
+    };
     const packRows = deriveGrnPackRows({ rcvdQty: 200, noOfBoxes: 8, unit: 'kg' });
     const documentRows = buildGrnCopyDocumentRows({
       grnNo: 'GRN-1',
-      sourceDocuments: {
-        bill: { fileName: 'inv.pdf' },
-        waybill: { fileName: 'ewb.pdf' },
-        coa: { fileName: 'coa.pdf' },
-      },
+      sourceDocuments,
       lineItem: { poQty: 200, rcvdQty: 200, invoiceQty: 200, unitPrice: 298, unit: 'kg' },
     });
     const checks = buildGrnMatchChecks({
-      grn: { grnNo: 'GRN-1', lineItem: { poQty: 200, rcvdQty: 200, invoiceQty: 200, unitPrice: 298, unit: 'kg' } },
+      grn: {
+        grnNo: 'GRN-1',
+        sourceDocuments,
+        lineItem: { poQty: 200, rcvdQty: 200, invoiceQty: 200, unitPrice: 298, unit: 'kg' },
+      },
       packRows,
       documentRows,
       photoCount: 2,
@@ -79,6 +84,59 @@ describe('grnCopyReceiptDisplay', () => {
     expect(allGrnCoreMatchChecksPass(checks)).toBe(false);
     expect(grnReceiptPrerequisitesMet(checks)).toBe(true);
     expect(allGrnReceiptChecksPass(checks)).toBe(false);
+  });
+
+  it('checks Physical/Billed against shipped qty, not full PO qty, on a partial shipment', () => {
+    // Vendor ships 100 of a 10,000-unit PO — this GRN only covers what actually arrived.
+    const packRows = deriveGrnPackRows({ rcvdQty: 100, noOfBoxes: 1, unit: 'pcs' });
+    const documentRows = buildGrnCopyDocumentRows({
+      grnNo: 'GRN-1',
+      sourceDocuments: {
+        bill: { fileName: 'inv.pdf' },
+        waybill: { fileName: 'ewb.pdf' },
+        coa: { fileName: 'coa.pdf' },
+      },
+      lineItem: { poQty: 10000, rcvdQty: 100, invoiceQty: 100, unitPrice: 50, unit: 'pcs' },
+    });
+    const checks = buildGrnMatchChecks({
+      grn: { grnNo: 'GRN-1', lineItem: { poQty: 10000, rcvdQty: 100, invoiceQty: 100, unitPrice: 50, unit: 'pcs' } },
+      packRows,
+      documentRows,
+      photoCount: 1,
+      billedQty: 100,
+      verifiedUnitPrice: 50,
+    });
+    const physicalRow = checks.find((c) => c.label.startsWith('Physical'));
+    const billedRow = checks.find((c) => c.label.startsWith('Billed Qty'));
+    expect(physicalRow?.label).toContain('Shipped Qty');
+    expect(physicalRow?.label).not.toContain('PO Qty');
+    expect(physicalRow?.pass).toBe(true);
+    expect(billedRow?.pass).toBe(true);
+    expect(allGrnCoreMatchChecksPass(checks)).toBe(true);
+  });
+
+  it('"Documents received" only asks for the checklist-ticked docs, not always Invoice+EWB+COA', () => {
+    // Dock checklist says only an invoice arrived — no E-Way Bill, no COA — so those must not be
+    // demanded. Only Tax Invoice is uploaded.
+    const sourceDocuments = {
+      receipt: { checklist: { invoice: true, ewayBill: false, coa: false } },
+      bill: { fileName: 'inv.pdf' },
+    };
+    const packRows = deriveGrnPackRows({ rcvdQty: 50, noOfBoxes: 1, unit: 'kg' });
+    const documentRows = buildGrnCopyDocumentRows({
+      grnNo: 'GRN-1',
+      sourceDocuments,
+      lineItem: { poQty: 50, rcvdQty: 50, unit: 'kg' },
+    });
+    const checks = buildGrnMatchChecks({
+      grn: { grnNo: 'GRN-1', sourceDocuments, lineItem: { poQty: 50, rcvdQty: 50, unit: 'kg' } },
+      packRows,
+      documentRows,
+      photoCount: 1,
+    });
+    const docsRow = checks.find((c) => c.label.startsWith('Documents received'));
+    expect(docsRow?.label).toBe('Documents received (Tax Invoice)');
+    expect(docsRow?.pass).toBe(true);
   });
 
   it('resolveGrnExistingLabels reads GRN-level and line-level labels', () => {

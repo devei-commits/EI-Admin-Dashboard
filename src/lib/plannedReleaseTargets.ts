@@ -121,6 +121,28 @@ export function buildPlannedReleaseTargets(opts: {
   }));
 }
 
+/**
+ * Which total drives the release plan — the per-batch picks, or the Quantity field?
+ *
+ * Picks win whenever there are any. Every path that sets a consolidated total by hand (typing in
+ * Quantity, "Set qty = MOQ", the gap-need shortcut, choosing a vendor slab) CLEARS the batch picks
+ * first, so a manual total and live picks can never coexist. When picks exist the Quantity field is
+ * therefore either in sync with them or intentionally lagging — "+ Add" builds up the week plan, and
+ * editing a week qty rewrites Quantity from the week rollup.
+ *
+ * The previous rule compared the two numerically and threw the picks away on any mismatch. That was
+ * meant to let a manually bumped total beat the picks, but the qty handlers already clear picks for
+ * that case; all it actually did was collapse the entire week-wise breakdown into one lead-time
+ * bucket the moment "+ Add" (which deliberately leaves Quantity alone) created a difference.
+ */
+export function resolveReleaseFormQty(formQty: number, batchPickEntries: BatchPickEntry[]): number {
+  const pickSum = batchPickEntries.reduce(
+    (sum, entry) => sum + (entry.qty > 0 ? entry.qty : 0),
+    0
+  );
+  return pickSum > 0 ? pickSum : formQty;
+}
+
 export type PlannedReleaseWeekSummary = {
   weekKey: string;
   weekLabel: string;

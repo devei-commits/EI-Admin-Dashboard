@@ -69,8 +69,8 @@ export const ModalSection: React.FC<{ title: string; children: React.ReactNode }
 );
 
 /** Labelled text input matching the tool's form style. */
-export const Field: React.FC<{ label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string }> = ({
-  label, value, onChange, type = 'text', placeholder,
+export const Field: React.FC<{ label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string; min?: string; max?: string }> = ({
+  label, value, onChange, type = 'text', placeholder, min, max,
 }) => (
   <label className="block">
     <span className="text-[10px] font-semibold text-ink-3 uppercase tracking-wide">{label}</span>
@@ -78,6 +78,8 @@ export const Field: React.FC<{ label: string; value: string; onChange: (v: strin
       type={type}
       value={value}
       placeholder={placeholder}
+      min={min}
+      max={max}
       onChange={(e) => onChange(e.target.value)}
       className="mt-1 w-full px-2.5 py-1.5 border border-border rounded-lg text-sm bg-surface focus:ring-2 focus:ring-[color:var(--ring)] focus:border-[color:var(--accent)]"
     />

@@ -108,11 +108,17 @@ export function mergePurchaseOrderRecords(
   return merged;
 }
 
+/** A PO's raw backend `status` (or `exception_status`) reads as cancelled — e.g. "Cancelled". */
+export function isPoStatusCancelled(status: string | null | undefined): boolean {
+  return String(status ?? '').trim().toLowerCase().includes('cancel');
+}
+
 export function derivePoWorkflowStatusFromBackend(
   backendStatus: string | null | undefined,
   legacyStatus: IssuedPOViewRecord['status'],
 ): PoStatus {
   const s = String(backendStatus ?? '').toLowerCase();
+  if (isPoStatusCancelled(s)) return 'cancelled';
   if (s.includes('draft')) return 'draft';
   if (s.includes('await') && s.includes('pay')) return 'awaiting_payment';
   if (s.includes('accept')) return 'accepted';

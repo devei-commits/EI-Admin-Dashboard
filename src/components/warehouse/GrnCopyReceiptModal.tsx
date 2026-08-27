@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react';
+import { X, Printer } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import {
   fetchGRNAssignableUsers,
@@ -75,6 +76,7 @@ import { GrnBatchDetailsSection } from './GrnBatchDetailsSection';
 import { DocFileUploadCell } from './DocFileUploadCell';
 import { GrnPackagingListSection } from './GrnPackagingListSection';
 import { GrnGenerateLabelsSection } from './GrnGenerateLabelsSection';
+import { printPackLabels } from '../../lib/grnPackLabelPrint';
 import { GrnQuarantineQcSection } from './GrnQuarantineQcSection';
 import { GrnQcCompleteSection } from './GrnQcCompleteSection';
 import { ModalOverlay } from '../ui/ModalOverlay';
@@ -288,6 +290,34 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
       };
     });
   }, [currentStep, packagingMatchesBatches, grn.grnNo]);
+
+  /**
+   * The box-QR labels (generateLabelsCore below) must match the REAL packs recorded in the
+   * Packaging List (step 4) — packRows was previously seeded once from grn.noOfBoxes (a stale GRN
+   * field that defaults to 1 and is never updated by confirming batches/packaging) plus an even
+   * split of rcvdQty. That silently collapsed multiple real packs into fewer/wrong-sized generated
+   * labels — e.g. two 50 pc packs in the packaging list printed as a single 100-unit box label.
+   * packRows.actualQty is never hand-edited in this modal (handlePackActualChange is unused), so
+   * it's safe to fully resync packRows from the packaging list whenever it changes.
+   */
+  useEffect(() => {
+    const rows = packagingMeta.rows;
+    if (!rows || rows.length === 0) return;
+    setPackRows(
+      rows.map((row, i) => {
+        const qty = Number(row.qty) || 0;
+        return {
+          packIndex: i + 1,
+          packTotal: rows.length,
+          declaredQty: qty,
+          actualQty: qty,
+          variance: 0,
+          condition: 'OK',
+          unit: lineItem.unit ?? 'kg',
+        };
+      }),
+    );
+  }, [packagingMeta.rows, lineItem.unit]);
 
   useEffect(() => {
     let alive = true;
@@ -778,6 +808,36 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
     }
   }, [sourceDocuments, docRefs, grn.id]);
 
+  /**
+   * Hidden, always-mounted QR canvases for the pack labels — decoupled from step 5
+   * (GrnGenerateLabelsSection only renders while `currentStep === 5`), so the header's
+   * reprint button works from any step without navigating back and re-triggering generation.
+   */
+  const reprintPackGridRef = useRef<HTMLDivElement>(null);
+  const packLabelCtx = useMemo(
+    () => ({
+      batches: batchesMeta.rows ?? [],
+      productName: grnLineItemDisplayName(lineItem),
+      productCode: lineItem.itemCode,
+      vendor: grn.vendor,
+      unit: lineItem.unit,
+    }),
+    [batchesMeta.rows, lineItem, grn.vendor],
+  );
+  const handleReprintPackLabels = (): void => {
+    const rows = packagingMeta.rows ?? [];
+    if (!rows.length) return;
+    const canvases = reprintPackGridRef.current
+      ? Array.from(reprintPackGridRef.current.querySelectorAll<HTMLCanvasElement>('canvas'))
+      : [];
+    const qrDataUrls = rows.map((_, i) => canvases[i]?.toDataURL('image/png') ?? '');
+    if (!printPackLabels(rows, qrDataUrls, packLabelCtx)) {
+      addToast('error', 'Could not open print window. Allow popups and try again.');
+      return;
+    }
+    void handlePackLabelsPrinted();
+  };
+
   const handleConfirmPackaging = async (): Promise<void> => {
     const errors = grnPackagingValidationErrors(packagingMeta);
     if (errors.length) {
@@ -1096,6 +1156,17 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
               >
                 {generating ? 'Generating…' : hasExistingLabels ? 'Regenerate Labels' : 'Generate Labels'}
               </button>
+              {(packagingMeta.rows?.length ?? 0) > 0 ? (
+                <button
+                  type="button"
+                  onClick={handleReprintPackLabels}
+                  title={`Reprint the ${packagingMeta.rows!.length} pack label${packagingMeta.rows!.length === 1 ? '' : 's'} for this GRN — available from any step`}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-semibold text-ink-2 hover:bg-surface-2"
+                >
+                  <Printer className="h-4 w-4" aria-hidden />
+                  Print pack labels
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={onClose}
@@ -1111,6 +1182,15 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
               <GrnReceiptStepper currentStep={currentStep} />
             </div>
           ) : null}
+        </div>
+
+        {/* Hidden (display:none — canvas drawing isn't tied to visibility), always-mounted QR
+            canvases backing the header's reprint button — one per pack, independent of
+            currentStep so a reprint never depends on being back on step 5. */}
+        <div aria-hidden className="hidden" ref={reprintPackGridRef}>
+          {(packagingMeta.rows ?? []).map((row) => (
+            <QRCodeCanvas key={row.packagingNo} value={row.packagingNo} size={132} includeMargin />
+          ))}
         </div>
 
         {previewLabels ? (

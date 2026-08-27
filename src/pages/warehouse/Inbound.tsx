@@ -1,9 +1,16 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Search, X } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react';
+import { Search, X, Printer } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
-import { fetchGRNList, updateGRN, fetchGRNAssignableUsers, fetchGRNQcReference, type AssignableUser, type GeneratedLabel } from '../../services/grn.service';
+import {
+  fetchGRNList, updateGRN, fetchGRNAssignableUsers, fetchGRNQcReference, grnLineItemDisplayName,
+  type AssignableUser, type GeneratedLabel,
+} from '../../services/grn.service';
+import { readGrnBatchesMeta } from '../../lib/inboundGrnBatchesMeta';
+import { readGrnPackagingMeta } from '../../lib/inboundGrnPackagingMeta';
+import { printPackLabels } from '../../lib/grnPackLabelPrint';
 import { GrnQcInspectionPanel } from '../../components/warehouse/GrnQcInspectionPanel';
 import {
   deriveGrnQcStatusFromSpecs,
@@ -47,7 +54,7 @@ import {
   resolveInboundWarehouseCode,
   type InboundGrnRowInput,
 } from '../../lib/inboundGrnTableDisplay';
-import { inboundGrnSendToQcPayload } from '../../lib/inboundGrnStatus';
+import { inboundGrnRackAssignedPayload, inboundGrnSendToQcPayload } from '../../lib/inboundGrnStatus';
 import { requiredGrnDocsError } from '../../lib/grnCopyReceiptDisplay';
 import {
   buildPostRackingPhotosMeta,
@@ -600,6 +607,35 @@ const GRNDetailModal = ({
     selectedLineItem != null && grnQtysEqual(totalUnitsAllocated, selectedLineItem.rcvdQty);
 
   const labelsGenerated = Boolean(labels && labels.length > 0);
+
+  // Pack labels (one per physical pack, from GRN Copy's packaging list — separate from the box-QR
+  // put-away labels above). Reprintable here too, from the same packaging + batch data, independent
+  // of whether box labels were ever generated.
+  const packagingMeta = useMemo(() => readGrnPackagingMeta(sourceDocuments), [sourceDocuments]);
+  const batchesMeta = useMemo(() => readGrnBatchesMeta(sourceDocuments), [sourceDocuments]);
+  const packLabelCtx = useMemo(
+    () => ({
+      batches: batchesMeta.rows ?? [],
+      productName: grnLineItemDisplayName(selectedLineItem),
+      productCode: selectedLineItem?.itemCode ?? '',
+      vendor: grn.vendor,
+      unit: selectedLineItem?.unit,
+    }),
+    [batchesMeta.rows, selectedLineItem, grn.vendor],
+  );
+  const reprintPackGridRef = useRef<HTMLDivElement>(null);
+  const handleReprintPackLabels = () => {
+    const rows = packagingMeta.rows ?? [];
+    if (!rows.length) return;
+    const canvases = reprintPackGridRef.current
+      ? Array.from(reprintPackGridRef.current.querySelectorAll<HTMLCanvasElement>('canvas'))
+      : [];
+    const qrDataUrls = rows.map((_, i) => canvases[i]?.toDataURL('image/png') ?? '');
+    if (!printPackLabels(rows, qrDataUrls, packLabelCtx)) {
+      addToast('error', 'Could not open print window. Allow popups and try again.');
+    }
+  };
+
   const labeledLineItemCodes = useMemo(() => {
     const set = new Set<string>();
     for (const li of editedLineItems) {
@@ -916,7 +952,19 @@ const GRNDetailModal = ({
    * back in the list, where its action is GRN Copy.
    */
   const handleSaveAndContinueToGrnCopy = async (): Promise<void> => {
-    const saved = await persistUpdate({});
+    // Send the status/step advance explicitly. This called persistUpdate({}) with an empty payload,
+    // so rack, zone and photos saved while `status` and `workflow_steps` were never touched — the
+    // GRN stayed on "On Hold" with an empty stepper and the save looked like it had done nothing.
+    const saved = await persistUpdate(
+      // `grn.workflowSteps`, not `currentWorkflowSteps`: the latter is a useState initializer that
+      // never re-runs, so after an earlier "Save draft" in this same modal it still holds the steps
+      // as they were on open and would drop anything saved since.
+      inboundGrnRackAssignedPayload({
+        status: grn.status,
+        qcStatus,
+        workflowSteps: grn.workflowSteps,
+      }),
+    );
     if (!saved) return;
     addToast('success', 'Put-away saved. Open GRN Copy to generate labels and complete this GRN.');
     onClose();
@@ -1232,13 +1280,44 @@ const GRNDetailModal = ({
               <h2 id="grn-detail-modal-title" className="text-lg font-bold text-ink">GRN — {displayGrnNo(grn.grnNo)}</h2>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-surface-3 rounded-lg transition-colors text-ink-2"
-            aria-label="Close"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {labelsGenerated && labels && labels.length > 0 && (
+              <button
+                type="button"
+                onClick={handlePrintAllLabels}
+                title={`Reprint the ${labels.length} saved box QR label${labels.length === 1 ? '' : 's'} for this GRN`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand text-white text-xs font-semibold hover:bg-brand-press transition-colors"
+              >
+                <Printer className="w-3.5 h-3.5" aria-hidden />
+                Print box label{labels.length === 1 ? '' : 's'}
+              </button>
+            )}
+            {(packagingMeta.rows?.length ?? 0) > 0 && (
+              <button
+                type="button"
+                onClick={handleReprintPackLabels}
+                title={`Reprint the ${packagingMeta.rows!.length} pack label${packagingMeta.rows!.length === 1 ? '' : 's'} for this GRN`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-surface text-ink-2 text-xs font-semibold hover:bg-surface-2 transition-colors"
+              >
+                <Printer className="w-3.5 h-3.5" aria-hidden />
+                Print pack label{packagingMeta.rows!.length === 1 ? '' : 's'}
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-surface-3 rounded-lg transition-colors text-ink-2"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+        {/* Hidden (display:none — canvas drawing isn't tied to visibility), always-mounted QR
+            canvases backing the "Print pack labels" button above. */}
+        <div aria-hidden className="hidden" ref={reprintPackGridRef}>
+          {(packagingMeta.rows ?? []).map((row) => (
+            <QRCodeCanvas key={row.packagingNo} value={row.packagingNo} size={132} includeMargin />
+          ))}
         </div>
 
         <div className="p-6 space-y-8">

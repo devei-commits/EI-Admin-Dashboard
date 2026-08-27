@@ -16,6 +16,7 @@ import {
   isInboundGrnReceiptConfirmed,
   isInboundGrnSentToQc,
   isInboundGrnVerified,
+  INBOUND_GRN_RACK_ASSIGNED_STEP,
   INBOUND_GRN_RECEIPT_CONFIRMED_STEP,
   appendInboundGrnWorkflowStep,
 } from './inboundGrnStatus';
@@ -380,6 +381,39 @@ export function inboundGrnArrivalConfirmPayload(
   };
 }
 
+/**
+ * Has put-away actually been done for this GRN?
+ *
+ * This used to be inferred from the rack code alone — any code except the literal `DEFAULT` counted
+ * as racked, on the theory that `DEFAULT` is only ever an auto-filled placeholder. Facility
+ * Management genuinely offers a rack called `DEFAULT` ("DEFAULT — Default storage", in zone
+ * Default), so picking it saved a real assignment that the check then refused to recognise: the row
+ * kept offering Assign Rack, and re-saving could never change the answer (GRN-2026-0197 — rack
+ * DEFAULT, assignee set, one post-racking photo stored, stuck in that loop).
+ *
+ * Racking now proves itself instead of being guessed at, via the two artefacts the Assign Rack step
+ * produces: the `Rack Assigned` workflow stamp, and the required post-racking photos. The rack-code
+ * heuristic survives only as a fallback for rows saved before either existed.
+ *
+ * An assignee is still required regardless — GRN Copy's completion check refuses a GRN with no
+ * `assignedTo`, so routing an unassigned GRN onward would deadlock the two screens.
+ */
+export function isInboundGrnRacked(grn: InboundGrnRowInput): boolean {
+  const rack = String(grn.locationPrefix ?? '').trim();
+  if (rack === '') return false;
+  if (String(grn.assignedTo ?? '').trim() === '') return false;
+
+  const steps = Array.isArray(grn.workflowSteps) ? grn.workflowSteps : [];
+  if (steps.includes(INBOUND_GRN_RACK_ASSIGNED_STEP)) return true;
+
+  // Photos are mandatory to save the step, so any stored photo is proof it was completed.
+  const byRack = grn.sourceDocuments?.postRackingPhotos?.byRack ?? {};
+  if (Object.values(byRack).some((entry) => Number(entry?.photoCount) > 0)) return true;
+
+  // Legacy rows: no stamp, no photos — fall back to "the code isn't the auto-filled placeholder".
+  return rack.toUpperCase() !== 'DEFAULT';
+}
+
 export function inboundGrnActionView(grn: InboundGrnRowInput): { label: string; prefix: string | null } {
   const statusView = buildInboundGrnStatusView(grn);
 
@@ -388,14 +422,10 @@ export function inboundGrnActionView(grn: InboundGrnRowInput): { label: string; 
       assignee too — GRN Copy's own completion check refuses to finish a GRN with no assignedTo,
       so a rack-only save must keep routing back to Assign Rack or the two screens deadlock again
       (rack chosen, GRN Copy says "go assign rack", but the row button no longer opens it). */
-  const assignRackOrGrnCopy = (): { label: string; prefix: string | null } => {
-    const pfx = String(grn.locationPrefix ?? '').trim();
-    const racked =
-      pfx !== '' && pfx.toUpperCase() !== 'DEFAULT' && String(grn.assignedTo ?? '').trim() !== '';
-    return racked
+  const assignRackOrGrnCopy = (): { label: string; prefix: string | null } =>
+    isInboundGrnRacked(grn)
       ? { label: 'GRN Copy', prefix: '📋' }
       : { label: 'Assign Rack', prefix: '📍' };
-  };
 
   if (statusView.label === 'GRN COMPLETED') {
     return { label: 'GRN Copy', prefix: '📋' };
@@ -429,10 +459,7 @@ export function inboundGrnActionView(grn: InboundGrnRowInput): { label: string; 
     if (!isInboundGrnReceiptConfirmed(grn)) {
       return { label: 'Confirm Receipt', prefix: '✓' };
     }
-    const pfx = String(grn.locationPrefix ?? '').trim();
-    const racked =
-      pfx !== '' && pfx.toUpperCase() !== 'DEFAULT' && String(grn.assignedTo ?? '').trim() !== ''; // 'DEFAULT' = auto placeholder, not a real rack
-    if (racked) {
+    if (isInboundGrnRacked(grn)) {
       return { label: 'GRN Copy', prefix: '📋' }; // landed + racked → nothing left but pull the copy
     }
     if (isInboundGrnVerified(grn)) {

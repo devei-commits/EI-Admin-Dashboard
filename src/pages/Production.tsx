@@ -96,6 +96,9 @@ import {
   batchHasReservedMaterial,
   batchLineFullyReserved,
   coverageSummaryLabel,
+  pendingSummaryLabel,
+  reserveGateLabel,
+  reserveGateState,
   type BatchMaterialCoverage,
   type ProductionReservedItemRow,
 } from '../lib/productionBatchReserve';
@@ -1803,7 +1806,7 @@ function ConfirmScheduleModal({ batch, equipment, batches, team, onClose, onSave
 
       <div className="flex items-center justify-between gap-2 mt-5 pt-4 border-t border-gray-100">
         <span className="text-[11px] text-gray-500">
-          {rmFullyReserved ? coverageSummaryLabel(rmCov) + ' · all green to proceed' : 'Reserve all RM to proceed'}
+          {reserveGateLabel(rmCov, 'RM')}
         </span>
         <div className="flex gap-2">
           <button type="button" onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100 transition-colors">Cancel</button>
@@ -8464,6 +8467,25 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
   const lifecycleDisplayStage = batchLifecycleDisplayForBatch(batch, outboundMrns);
   const pipeline = BATCH_LIFECYCLE_PIPELINE;
 
+  // Reservation coverage for the footer prompts. `batch.rmReserved` is stock-backed only, so a
+  // batch already reserved from Planning's Batches tab (Planning delegates straight to this
+  // production batch once sent) reads as unreserved while its material is still on order — and the
+  // footer told the user to reserve again, which changes nothing. Coverage carries the claim, so
+  // the prompt can say "awaiting stock" instead of asking for a reserve that has already happened.
+  const detailBatchPk = (batch as Batch & { _pk?: number })._pk;
+  const [detailCoverage, setDetailCoverage] =
+    useState<{ rm: BatchMaterialCoverage; pm: BatchMaterialCoverage } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (detailBatchPk == null) return;
+    void fetchBatchReservationCoverage(detailBatchPk).then((cov) => {
+      if (!cancelled) setDetailCoverage(cov);
+    });
+    return () => { cancelled = true; };
+  }, [detailBatchPk]);
+  const rmReserveGate = reserveGateState(detailCoverage?.rm);
+  const pmReserveGate = reserveGateState(detailCoverage?.pm);
+
   const [bomRmItems, setBomRmItems] = useState<DispensingItem[]>([]);
   const [bomPmItems, setBomPmItems] = useState<DispensingItem[]>([]);
   const [bomLoading, setBomLoading] = useState(false);
@@ -8965,11 +8987,13 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
           {canUnreserveRmForBatch(batch, outboundMrns, reservedItems) && (
             <Btn color="gray" icon={<X size={12} />} onClick={() => { onClose(); onAction('unreserveRM', batch); }}>Remove RM reserve</Btn>
           )}
-          {(batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmReserved && <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reserveRM', batch); }}>Reserve RM</Btn>}
+          {/* Hidden once every line is claimed — re-reserving an already-claimed batch is a no-op,
+              the shortfall is waiting on a GRN rather than on another click. */}
+          {(batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !batch.rmReserved && rmReserveGate === 'unreserved' && <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reserveRM', batch); }}>Reserve RM</Btn>}
           {packagingUnlocked && canUnreservePmForBatch(batch, outboundMrns, reservedItems) && (
             <Btn color="gray" icon={<X size={12} />} onClick={() => { onClose(); onAction('unreservePM', batch); }}>Remove PM reserve</Btn>
           )}
-          {packagingUnlocked && canReservePmForBatch(batch) && <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reservePM', batch); }}>Reserve PM</Btn>}
+          {packagingUnlocked && canReservePmForBatch(batch) && pmReserveGate === 'unreserved' && <Btn color="amber" icon={<Package size={12} />} onClick={() => { onClose(); onAction('reservePM', batch); }}>Reserve PM</Btn>}
           <Btn color="orange" icon={<Settings size={12} />} onClick={() => { onClose(); onAction('editBatch', batch); }}>Edit Batch</Btn>
           {batch.rmReserved && (batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'batch_confirmed' || batch.bmrStatus === 'scheduled') && (
             <Btn color="emerald" icon={<CheckCircle2 size={12} />} onClick={() => { onClose(); onAction('confirmSchedule', batch); }}>Confirm &amp; Generate BMR/BPR</Btn>
@@ -8986,7 +9010,10 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
           {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && batch.rmReserved && !effectiveRmConnectedUi && !anyRmMtrForBatch && <Btn color="teal" icon={<Send size={12} />} onClick={() => { onClose(); onAction('mtrRM', batch, batch.dispensingRM.length > 0 ? undefined : { mtrRmItems: bomRmItems }); }}>RM Transfer</Btn>}
           {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled' || batch.bmrStatus === 'batch_confirmed') && !batch.rmReserved && !anyRmMtrForBatch && (
             <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-warn bg-warn-soft border border-warn-soft rounded-lg">
-              <Info size={14} className="shrink-0" /> Reserve all RM lines before RM Transfer
+              <Info size={14} className="shrink-0" />
+              {rmReserveGate === 'awaiting-stock'
+                ? `RM reserved${pendingSummaryLabel(detailCoverage?.rm) ? ` · ${pendingSummaryLabel(detailCoverage?.rm)}` : ''} — RM Transfer opens once the material is received`
+                : 'Reserve all RM lines before RM Transfer'}
             </span>
           )}
           {(batch.bmrStatus === 'rm_reserved' || batch.bmrStatus === 'scheduled') && !effectiveRmConnectedUi && openRmMtrForBatch && (

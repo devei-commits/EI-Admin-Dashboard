@@ -25,7 +25,12 @@ function toNum(v: string): number {
 // ── Shared vehicle fields ────────────────────────────────────────────────────
 function useVehicle() {
   const [v, setV] = useState<TransitVehicle>({ shippedDate: todayInput() });
-  const set = (k: keyof TransitVehicle) => (val: string) => setV((p) => ({ ...p, [k]: val }));
+  const set = (k: keyof TransitVehicle) => (val: string) => setV((p) => {
+    // Expected Arrival can't be in the past — a truck can't be expected to land before today.
+    // The <input min> blocks the date picker, but this backstops typed/pasted values too.
+    if (k === 'expectedArrival' && val && val < todayInput()) return p;
+    return { ...p, [k]: val };
+  });
   return { v, set };
 }
 const VehicleFields: React.FC<{ v: TransitVehicle; set: (k: keyof TransitVehicle) => (val: string) => void }> = ({ v, set }) => (
@@ -36,7 +41,7 @@ const VehicleFields: React.FC<{ v: TransitVehicle; set: (k: keyof TransitVehicle
     <Field label="Transporter" value={v.transporter ?? ''} onChange={set('transporter')} />
     <Field label="Shipped Date" type="date" value={v.shippedDate ?? ''} onChange={set('shippedDate')} />
     <Field label="Vendor Invoice #" value={v.vendorInvoiceNo ?? ''} onChange={set('vendorInvoiceNo')} />
-    <Field label="Expected Arrival" type="date" value={v.expectedArrival ?? ''} onChange={set('expectedArrival')} />
+    <Field label="Expected Arrival" type="date" value={v.expectedArrival ?? ''} onChange={set('expectedArrival')} min={todayInput()} />
   </div>
 );
 

@@ -32,7 +32,7 @@ import {
 import { findStockCheckNoteForItem, parseStockCheckNotes } from '../../lib/stockCheckNotes';
 import { getStockCheckGapForItem } from '../../lib/stockCheckGapDisplay';
 import type { Order } from '../../types/salesPurchase.types';
-import { mergePurchaseOrderRecords } from '../../lib/purchaseOrderRecordsMerge';
+import { mergePurchaseOrderRecords, isPoStatusCancelled } from '../../lib/purchaseOrderRecordsMerge';
 import { normalizeProcurementSection } from '../../lib/procurementNav';
 import { formatIsoWeekLabel } from '../../lib/isoWeek';
 import { buildProcurementRequestItemLines } from '../../lib/procurementRequestItemLines';
@@ -3708,7 +3708,8 @@ const Procurement: React.FC = () => {
               poNumber: String(linkedPO.poNumber ?? draftOverlay?.dpoNumber ?? request.code).replace('DPO', 'PO'),
               vendor: linkedPO.vendorName ?? draftOverlay?.vendor ?? linkedQuote?.vendor ?? 'Unassigned Vendor',
               status: rowStatus,
-              poWorkflowStatus: hasTs(tr?.grnCompleteAt) ? 'completed' as const
+              poWorkflowStatus: isPoStatusCancelled(linkedPO.status) ? 'cancelled' as const
+                : hasTs(tr?.grnCompleteAt) ? 'completed' as const
                 : (hasTs(tr?.underGrnAt) || hasTs(tr?.deliveredAt)) ? 'accepted' as const
                 : hasTs(tr?.shippedAt) ? 'issued' as const
                 : hasTs(tr?.advancePaidAt) ? 'awaiting_payment' as const
@@ -3864,7 +3865,8 @@ const Procurement: React.FC = () => {
         status: (ov?.shipped || ov?.delivered || ov?.underGrn || tracking?.shippedAt || tracking?.deliveredAt || tracking?.underGrnAt || tracking?.grnCompleteAt)
           ? ('In Transit' as const)
           : ('Released' as const),
-        poWorkflowStatus: hasTs2(tracking?.grnCompleteAt) ? 'completed' as const
+        poWorkflowStatus: isPoStatusCancelled(po.status) ? 'cancelled' as const
+          : hasTs2(tracking?.grnCompleteAt) ? 'completed' as const
           : (hasTs2(tracking?.underGrnAt) || hasTs2(tracking?.deliveredAt) || ov?.underGrn || ov?.delivered) ? 'accepted' as const
           : (hasTs2(tracking?.shippedAt) || ov?.shipped) ? 'issued' as const
           : hasTs2(tracking?.advancePaidAt) ? 'awaiting_payment' as const

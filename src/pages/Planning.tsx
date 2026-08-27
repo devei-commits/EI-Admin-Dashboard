@@ -64,7 +64,9 @@ import {
   batchCoverageRowClass,
   batchCoverageTier,
   isItemFullyCovered,
+  itemCoverageTierFromBatches,
 } from '../lib/itemsInvolvedBatchCoverage';
+import type { BatchCoverageTier } from '../lib/itemsInvolvedBatchCoverage';
 import MaterialMasterTypeahead from '../components/MaterialMasterTypeahead';
 import { buildMaterialTypeaheadOptions } from '../lib/materialTypeahead';
 import type { FFStatus } from '../types/orderFulfillment';
@@ -155,6 +157,7 @@ import {
   datesMatchForProcurementMerge,
   isoWeekKeyFromDate,
   mergeWeekQtyOverrides,
+  resolveReleaseFormQty,
   summarizePlannedReleaseTargetsByWeek,
 } from '../lib/plannedReleaseTargets';
 import {
@@ -280,7 +283,7 @@ function invalidatePlanningBatchData(queryClient: QueryClient): void {
     ['planning-extracted'],                            // PIS Extracted list + per-PI → drives KPIs
     ['planning', 'items-involved'],                    // Items Involved aggregate + ['...','by-pe',peId]
     ['planning', 'batches', 'all', 'items-involved'],  // batch-panel involved rows
-    ['production-batches'],                            // production view (delete detaches the link)
+    ['production-batches'],                            // production view (delete removes the linked batch too, when safe)
     ['so-planning-availability'],                      // per-SO material availability
     ['fulfillment-orders', 'planning-batches-tab'],    // Batches-tab fulfillment column
   ];
@@ -4534,8 +4537,12 @@ const Planning = () => {
       const label = dbBatch?.batchCode || `Batch ${batchIndex + 1}`;
 
       // Any batch may be deleted — confirm first, warning harder when it's already sent to production.
+      // The server also removes its linked production batch, but only while that batch is still
+      // Draft/Batch Confirmed with no dispensing or FG yet — once real work has started there, the
+      // server blocks the whole delete instead (see the error surfaced below) rather than silently
+      // destroying production progress.
       const message = isSent
-        ? `${label} has been sent to Production. Deleting it permanently removes the planning batch and detaches (does not delete) its production batch. This cannot be undone.\n\nDelete anyway?`
+        ? `${label} has been sent to Production. Deleting it permanently removes the planning batch AND its linked production batch (if that batch hasn't started yet — RM/PM dispensed or FG produced blocks this). This cannot be undone.\n\nDelete anyway?`
         : `Delete ${label}? This permanently removes the planning batch and renumbers the rest. This cannot be undone.`;
       if (!window.confirm(message)) return;
 
@@ -4735,9 +4742,13 @@ const Planning = () => {
             'info',
             `${okMsg} — ${pending.length} item(s) awaiting stock (${detail}${more}). These allocate automatically when the material is received.`,
           );
-          return;
+        } else {
+          addToast('success', okMsg);
         }
-        addToast('success', okMsg);
+        // Refresh on BOTH paths. This used to `return` as soon as any line was short, which skipped
+        // every invalidation below — so on a batch where most lines lack stock (the normal case) the
+        // reserve succeeded on the server while the popup went on showing "Reserved 0". It read as
+        // "the button does nothing", and the lines that WERE backed stayed invisible until reload.
         await refetchBatchReserveCoverage();
         invalidatePlanningBatchData(queryClient);
         if (batchDetailModalPeId) {
@@ -4745,6 +4756,9 @@ const Planning = () => {
         }
         queryClient.invalidateQueries({ queryKey: ['warehouse-inventory'] });
         queryClient.invalidateQueries({ queryKey: ['planning', 'batches', 'reserved-counts'] });
+        // Production reads the same reservations once the batch is sent (Planning delegates to the
+        // production batch), so its coverage must drop too or it keeps asking to reserve again.
+        queryClient.invalidateQueries({ queryKey: ['production'] });
       } finally {
         setPlanningReserveBusy(false);
       }
@@ -5267,6 +5281,41 @@ const Planning = () => {
   /** Sent production batches only — matches items-involved batchCount and BOM confirm scope. */
   const getReleaseSplitBatchesForItem = (item: ItemsInvolvedDisplayRow): PlanningBatchAllRow[] =>
     getUsedInBatchesForItem(item).filter((b) => b.sent === true);
+
+  /**
+   * Coverage tier for an Items Involved row — the worst tier among the batches behind it, so the
+   * table shows the same red > yellow > pink > green verdict as the "Batches using <item>" modal
+   * without having to open every item.
+   *
+   * Deliberately does NOT go through `getItemRequiredInBatch`: that re-runs `getUsedInBatchesForItem`
+   * and re-allocates the whole consolidated requirement once per batch, which is fine for one modal
+   * but is O(batches²) per row and would run for every row on every render of the table. The batches
+   * and the allocation are resolved once here instead, and the result is cached per row id for the
+   * lifetime of the render pass.
+   */
+  const itemsInvolvedCoverageTierCache = new Map<string, BatchCoverageTier>();
+  const getItemsInvolvedCoverageTier = (item: ItemsInvolvedDisplayRow): BatchCoverageTier => {
+    const cacheKey = String(item.id);
+    const cached = itemsInvolvedCoverageTierCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const batches = getReleaseSplitBatchesForItem(item);
+    // Allocation is over ALL batches the item appears in (matching getItemRequiredInBatch), then
+    // read back for the sent ones only — the same set the modal lists.
+    const alloc = allocateConsolidatedReqAcrossBatches(item, getUsedInBatchesForItem(item));
+    const batchQtys = batches.map((batch) => Number(alloc.get(releaseBatchPickKey(batch))) || 0);
+
+    const sih = Number(item.sihNum) || 0;
+    const poQty = Number(item.poQtyNum) || 0;
+    const totalRequired = batchQtys.reduce((sum, qty) => sum + qty, 0);
+    const itemFullyCovered = isItemFullyCovered(totalRequired, sih, poQty);
+
+    const tier = itemCoverageTierFromBatches(
+      batchQtys.map((batchQty) => batchCoverageTier({ batchQty, sih, poQty, itemFullyCovered }))
+    );
+    itemsInvolvedCoverageTierCache.set(cacheKey, tier);
+    return tier;
+  };
 
   const batchRequiredPickQtyForItem = (
     item: ItemsInvolvedDisplayRow,
@@ -5886,18 +5935,15 @@ const Planning = () => {
       return false;
     }
 
-    // The Quantity field (`qty`) is the authoritative released total. Per-batch picks only
-    // split it. If the two disagree — e.g. the user bumped the total above BOM demand to meet
-    // a vendor MOQ (50,000 vs picks summing to 10,000) — the explicit total wins, so procurement
-    // gets EXACTLY what was released instead of the smaller pick sum.
+    // Per-batch picks split the release across weeks; the Quantity field is the released total
+    // only when no batch line was picked. Bumping the total above BOM demand to meet a vendor MOQ
+    // (50,000 vs picks summing to 10,000) still works because typing in Quantity clears the picks
+    // outright — see resolveReleaseFormQty. Releases exactly what the week panel previewed.
     const submitBatchEntries = parseReleaseBatchPickEntries(releaseBatchPicks);
-    const submitBatchSum = submitBatchEntries.reduce((sum, e) => sum + e.qty, 0);
-    const effectiveBatchEntries =
-      qty > 0 && Math.abs(submitBatchSum - qty) > 1e-4 ? [] : submitBatchEntries;
     const releaseTargets = buildReleaseTargetsForSubmit(
       buildPlannedReleaseTargets({
-        formQty: qty,
-        batchPickEntries: effectiveBatchEntries,
+        formQty: resolveReleaseFormQty(qty, submitBatchEntries),
+        batchPickEntries: submitBatchEntries,
         batchExpectedDates: releaseBatchExpectedDates,
         slabMoq,
         leadTimeDays,
@@ -8490,8 +8536,14 @@ const Planning = () => {
                           hasOpenQuotationPr
                         );
                         const quotationBtnClass = planningQuotationActionButtonClass(quotationAskUi.status);
+                        // Coverage owns the row fill (see below), so a pending quotation is marked
+                        // with an inset ring instead of its old `bg-warn-soft/90` background — that
+                        // amber fill was indistinguishable from the yellow coverage tier, and the
+                        // two mean entirely different things.
                         const quotationRowHighlight =
-                          quotationAskUi.status === 'pending' ? 'bg-warn-soft/90' : '';
+                          quotationAskUi.status === 'pending' ? 'ring-2 ring-inset ring-warn' : '';
+                        const coverageTier = getItemsInvolvedCoverageTier(item);
+                        const coverageRowClass = batchCoverageRowClass(coverageTier);
                         const quotationBtnLabel =
                           quotationAskUi.status === 'fulfilled_unread'
                             ? 'Quotation ready'
@@ -8511,12 +8563,14 @@ const Planning = () => {
                             key={item.id}
                             id={`planning-items-involved-${item.id}`}
                             onClick={() => setItemDetail(item)}
+                            title={
+                              coverageTier === 'none'
+                                ? undefined
+                                : `${batchCoverageLabel(coverageTier)} — worst of this item's batches`
+                            }
                             className={`cursor-pointer ${quotationRowHighlight} ${
-                              quotationRowHighlight
-                                ? ''
-                                : idx % 2 === 0
-                                  ? 'bg-surface'
-                                  : 'bg-surface-2'
+                              coverageRowClass ||
+                              (idx % 2 === 0 ? 'bg-surface' : 'bg-surface-2')
                             }`}
                           >
                             <td className="px-2 py-2 whitespace-nowrap">
@@ -8529,6 +8583,14 @@ const Planning = () => {
                                 >
                                   {item.code}
                                 </button>
+                                {coverageTier !== 'none' ? (
+                                  <span
+                                    className={batchCoverageBadgeClass(coverageTier)}
+                                    title={`Worst batch coverage for this item — open the batch count to see which batch`}
+                                  >
+                                    {batchCoverageLabel(coverageTier)}
+                                  </span>
+                                ) : null}
                                 {/* Material comment thread — the same one PIs Extracted writes to,
                                     keyed by material id so notes follow the material across screens. */}
                                 {(() => {
@@ -9353,16 +9415,14 @@ const Planning = () => {
           item.itemType === 'RM'
             ? formatItemsInvolvedQty(n, 'RM', releaseRmMaster?.uom ?? item.unit)
             : formatItemsInvolvedQty(n, item.itemType, item.unit);
-        // Keep the preview consistent with submit: the Quantity total is authoritative — if it
-        // disagrees with the per-batch picks (e.g. bumped to MOQ), the total wins.
+        // Keep the preview consistent with submit: per-batch picks drive the week split whenever
+        // there are any, and the Quantity total only stands alone when there are none. See
+        // resolveReleaseFormQty — comparing the two and dropping the picks on a mismatch used to
+        // flatten every "+ Add" into a single lead-time week.
         const previewBatchEntries = parseReleaseBatchPickEntries(releaseBatchPicks);
-        const previewBatchSum = previewBatchEntries.reduce((sum, e) => sum + e.qty, 0);
         const releasePreviewTargets = buildPlannedReleaseTargets({
-          formQty: formQtyModal,
-          batchPickEntries:
-            formQtyModal > 0 && Math.abs(previewBatchSum - formQtyModal) > 1e-4
-              ? []
-              : previewBatchEntries,
+          formQty: resolveReleaseFormQty(formQtyModal, previewBatchEntries),
+          batchPickEntries: previewBatchEntries,
           batchExpectedDates: releaseBatchExpectedDates,
           slabMoq: slabMoqModal,
           leadTimeDays: releaseToPlanningForm.leadTimeDays,
@@ -9458,12 +9518,15 @@ const Planning = () => {
         const handleReleaseBatchExpectedDateChange = (key: string, value: string) => {
           setReleaseBatchExpectedDates((prev) => ({ ...prev, [key]: value }));
         };
-        // "+ Add" a batch's required qty into the picks: builds up the per-week release plan
-        // below only — it must NOT touch the Planned line details' Quantity/Expected date, since
-        // those are populated exclusively by Pick on a week row once the split across weeks looks
-        // right. (Typing directly into a batch's own qty input still updates the Planned line,
-        // via handleReleaseBatchPickChange above — only this "+ Add" shortcut is scoped to the
-        // week-wise summary.)
+        // "+ Add" accumulates a batch's required qty into the picks, growing the week-wise plan
+        // below — each added batch lands in the ISO week of its own expected date, so adding
+        // several across different weeks yields several week rows (and several PRs).
+        //
+        // It leaves the Planned line's Expected date alone: a plan spanning weeks has no single
+        // required-by, and Pick on a week row is what commits one. Quantity DOES follow the pick
+        // sum, exactly as the panel's help text promises ("The sum updates the quantity field
+        // below") — leaving it stale made the header read one total while the week panel and the
+        // batch Totals row read another.
         const handleReleaseBatchAddPick = (key: string, requiredPick: number) => {
           const value = requiredPick > 0 ? String(requiredPick) : '';
           if (requiredPick > 0) {
@@ -9472,7 +9535,14 @@ const Planning = () => {
             );
           }
           setReleaseWeekQtyOverrides({});
-          setReleaseBatchPicks((prev) => ({ ...prev, [key]: value }));
+          setReleaseBatchPicks((prev) => {
+            const next = { ...prev, [key]: value };
+            setReleaseToPlanningForm((f) => ({
+              ...f,
+              qty: releaseBatchPicksToFormQtyStr(item, next),
+            }));
+            return next;
+          });
         };
         // "Pick" a single batch: make it the sole selection so the Planned line below
         // reflects only this batch's qty, and seed its own expected (required-by) date.

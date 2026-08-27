@@ -64,6 +64,41 @@ export function batchCoverageTier(args: {
 }
 
 /**
+ * Severity order used to roll a set of batch tiers up to the item row: red > yellow > pink > green.
+ * `none` is absent on purpose — an untinted batch carries no verdict and must not outrank one.
+ */
+const TIER_SEVERITY: Record<Exclude<BatchCoverageTier, 'none'>, number> = {
+  red: 4,
+  yellow: 3,
+  pink: 2,
+  green: 1,
+};
+
+/**
+ * The Items Involved row's own tier — the worst tier among its batches.
+ *
+ * One red batch reds the item; failing that one yellow makes it yellow, then pink, and only an
+ * all-green set stays green. The item row therefore always shows the most urgent thing inside it,
+ * so a problem batch cannot hide behind a mostly-covered item.
+ *
+ * Untinted batches (`none` — no requirement to judge) are skipped rather than treated as satisfied.
+ * An item with no batches at all, or none carrying a requirement, returns `none` and stays untinted.
+ */
+export function itemCoverageTierFromBatches(tiers: BatchCoverageTier[]): BatchCoverageTier {
+  let worst: BatchCoverageTier = 'none';
+  let worstRank = 0;
+  for (const tier of tiers) {
+    if (tier === 'none') continue;
+    const rank = TIER_SEVERITY[tier];
+    if (rank > worstRank) {
+      worstRank = rank;
+      worst = tier;
+    }
+  }
+  return worst;
+}
+
+/**
  * Row classes for a tier: soft background plus a left accent bar.
  *
  * Mirrors the tinting convention already used by the PIs Extracted rows (`pisRowClass`) so the two

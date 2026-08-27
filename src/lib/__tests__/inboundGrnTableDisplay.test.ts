@@ -4,6 +4,7 @@ import {
   buildInboundStorageView,
   formatInboundSourceDocSet,
   inboundGrnActionView,
+  isInboundGrnRacked,
 } from '../inboundGrnTableDisplay';
 
 describe('inboundGrnTableDisplay', () => {
@@ -227,5 +228,79 @@ describe('inboundGrnTableDisplay', () => {
         lineItem: { rcvdQty: 10 },
       }).label,
     ).toBe('1 of 4 docs uploaded');
+  });
+});
+
+describe('isInboundGrnRacked — a rack literally named DEFAULT still counts', () => {
+  /**
+   * GRN-2026-0197 exactly as stored after Assign Rack: the user picked "DEFAULT — Default storage"
+   * from Facility Management, an assignee is set, one post-racking photo is saved. The old check
+   * read the code `DEFAULT` as an auto-placeholder, so the row offered Assign Rack forever and
+   * saving again could never change the answer.
+   */
+  const racked0197 = {
+    grnNo: 'GRN-2026-0197',
+    status: 'Under GRN',
+    qcStatus: 'Passed',
+    assignedTo: 'Admin User',
+    locationPrefix: 'DEFAULT',
+    locationZone: 'Default',
+    receivedDate: '2026-08-28',
+    grnDate: '2026-08-27',
+    workflowSteps: [
+      'Receipt Confirmed', 'Sent to QC', 'PO Received', 'Qty Check', 'QC Inspection', 'Rack Assigned',
+    ],
+    sourceDocuments: {
+      postRackingPhotos: { byRack: { DEFAULT: { photoCount: 1, updatedAt: '2026-08-27T20:47:10.767Z' } } },
+    },
+  };
+
+  it('counts the Rack Assigned stamp as proof, whatever the rack is called', () => {
+    expect(isInboundGrnRacked(racked0197)).toBe(true);
+  });
+
+  it('moves the row on to GRN Copy instead of looping back to Assign Rack', () => {
+    expect(inboundGrnActionView(racked0197).label).toBe('GRN Copy');
+  });
+
+  it('counts saved post-racking photos when the step stamp is missing', () => {
+    // Rows racked before the stamp existed still carry their mandatory photos.
+    const noStamp = { ...racked0197, workflowSteps: ['Receipt Confirmed', 'Sent to QC'] };
+    expect(isInboundGrnRacked(noStamp)).toBe(true);
+    expect(inboundGrnActionView(noStamp).label).toBe('GRN Copy');
+  });
+
+  it('still treats a bare DEFAULT with no stamp and no photos as unracked', () => {
+    // The legacy placeholder case the original rule was written for — kept working.
+    const placeholder = {
+      ...racked0197,
+      workflowSteps: ['Receipt Confirmed', 'Sent to QC'],
+      sourceDocuments: {},
+    };
+    expect(isInboundGrnRacked(placeholder)).toBe(false);
+    expect(inboundGrnActionView(placeholder).label).toBe('Assign Rack');
+  });
+
+  it('accepts a normal named rack as before', () => {
+    const named = { ...racked0197, workflowSteps: [], sourceDocuments: {}, locationPrefix: 'A-01-03' };
+    expect(isInboundGrnRacked(named)).toBe(true);
+  });
+
+  it('needs an assignee — GRN Copy cannot complete a GRN without one', () => {
+    expect(isInboundGrnRacked({ ...racked0197, assignedTo: '' })).toBe(false);
+    expect(inboundGrnActionView({ ...racked0197, assignedTo: '' }).label).toBe('Assign Rack');
+  });
+
+  it('needs a rack code at all', () => {
+    expect(isInboundGrnRacked({ ...racked0197, locationPrefix: '' })).toBe(false);
+  });
+
+  it('ignores a photos record that holds no photos', () => {
+    const zeroPhotos = {
+      ...racked0197,
+      workflowSteps: ['Receipt Confirmed'],
+      sourceDocuments: { postRackingPhotos: { byRack: { DEFAULT: { photoCount: 0, updatedAt: 'x' } } } },
+    };
+    expect(isInboundGrnRacked(zeroPhotos)).toBe(false);
   });
 });
