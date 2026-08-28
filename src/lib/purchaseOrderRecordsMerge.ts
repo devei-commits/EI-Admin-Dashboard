@@ -113,6 +113,28 @@ export function isPoStatusCancelled(status: string | null | undefined): boolean 
   return String(status ?? '').trim().toLowerCase().includes('cancel');
 }
 
+/** A live, issued PO — released to the vendor and still running. */
+export function isPoStatusIssuedLike(status: string | null | undefined): boolean {
+  const s = String(status ?? '').trim().toLowerCase();
+  return s === 'released' || s === 'issued';
+}
+
+/**
+ * Which backend POs belong in the Purchase Orders list.
+ *
+ * Wider than `isPoStatusIssuedLike` on purpose. Cancelling rewrites `purchase_orders.status` to
+ * 'Cancelled' (see cancelPo), so gating the list on issued-only statuses deleted the PO from the
+ * view the moment it was cancelled — 198 rows, none of them cancellable-looking, and the view's own
+ * "Cancelled" filter matching nothing. It also made the downstream `isPoStatusCancelled` mapping
+ * unreachable: the row was already gone before anything could label it.
+ *
+ * Deliberately NOT used for the "is this PO live?" questions — a cancelled PO must still not block
+ * deleting its request, nor be treated as shippable.
+ */
+export function isPoStatusListed(status: string | null | undefined): boolean {
+  return isPoStatusIssuedLike(status) || isPoStatusCancelled(status);
+}
+
 export function derivePoWorkflowStatusFromBackend(
   backendStatus: string | null | undefined,
   legacyStatus: IssuedPOViewRecord['status'],

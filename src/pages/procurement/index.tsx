@@ -32,7 +32,12 @@ import {
 import { findStockCheckNoteForItem, parseStockCheckNotes } from '../../lib/stockCheckNotes';
 import { getStockCheckGapForItem } from '../../lib/stockCheckGapDisplay';
 import type { Order } from '../../types/salesPurchase.types';
-import { mergePurchaseOrderRecords, isPoStatusCancelled } from '../../lib/purchaseOrderRecordsMerge';
+import {
+  mergePurchaseOrderRecords,
+  isPoStatusCancelled,
+  isPoStatusIssuedLike,
+  isPoStatusListed,
+} from '../../lib/purchaseOrderRecordsMerge';
 import { normalizeProcurementSection } from '../../lib/procurementNav';
 import { formatIsoWeekLabel } from '../../lib/isoWeek';
 import { buildProcurementRequestItemLines } from '../../lib/procurementRequestItemLines';
@@ -59,6 +64,7 @@ import {
   type PlanningQuotationAsk,
 } from '../../services/planningQuotationAsks.service';
 import { fetchVendorClients } from '../../services/vendorClient.service';
+import VendorClientNameTypeahead from '../../components/VendorClientNameTypeahead';
 import {
   fetchPurchaseOrders,
   createPurchaseOrder,
@@ -1017,6 +1023,14 @@ const Procurement: React.FC = () => {
   const [editDraftPoPriceDraft, setEditDraftPoPriceDraft] = useState<Record<number, string>>({});
   const [editDraftPoGstDraft, setEditDraftPoGstDraft] = useState<Record<number, string>>({});
   const [editDraftPoGstAmtDraft, setEditDraftPoGstAmtDraft] = useState<Record<number, string>>({});
+  /**
+   * Raw text for the per-line Lead (days) inputs.
+   *
+   * Kept as strings, like the price/GST drafts, so the field can be empty mid-typing without
+   * snapping to 0. Empty means "no lead time on record" and stays `undefined` on the line — the
+   * Lead Connecting Date column depends on that staying distinct from a real zero.
+   */
+  const [editDraftPoLeadDraft, setEditDraftPoLeadDraft] = useState<Record<number, string>>({});
   const [poTrackingForm, setPoTrackingForm] = useState<Partial<PoTrackingRecord>>({});
   const [selectedStockCheckRequest, setSelectedStockCheckRequest] = useState<ProcurementRequest | null>(null);
   const [selectedStockCheckItemName, setSelectedStockCheckItemName] = useState<string | null>(null);
@@ -1298,10 +1312,18 @@ const Procurement: React.FC = () => {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const { dispatch: globalDispatch } = useGlobalState();
-  const isIssuedLikePoStatus = useCallback((status: unknown): boolean => {
-    const s = String(status ?? '').trim().toLowerCase();
-    return s === 'released' || s === 'issued';
-  }, []);
+  /** Live, issued PO. Used for "can this be shipped / does it block deleting the request". */
+  const isIssuedLikePoStatus = useCallback(
+    (status: unknown): boolean => isPoStatusIssuedLike(status as string),
+    [],
+  );
+  /**
+   * Which POs the Purchase Orders list shows — issued AND cancelled. Cancelling sets
+   * purchase_orders.status to 'Cancelled', so the issued-only gate dropped the row entirely and the
+   * view's Cancelled filter could never match anything. Kept separate from
+   * `isIssuedLikePoStatus` so a cancelled PO still doesn't count as live anywhere else.
+   */
+  const isListedPoStatus = useCallback((status: unknown): boolean => isPoStatusListed(status as string), []);
 
   const procurementQueriesFetching = useIsFetching({ predicate: procurementPageQueryPredicate }) > 0;
 
@@ -2916,6 +2938,7 @@ const Procurement: React.FC = () => {
     setEditDraftPoPriceDraft({});
     setEditDraftPoGstDraft({});
     setEditDraftPoGstAmtDraft({});
+    setEditDraftPoLeadDraft({});
   }, [editDraftPOTarget]);
 
   const updateEditRequestItem = (index: number, updates: Partial<BackendPRItem>) => {
@@ -3572,7 +3595,7 @@ const Procurement: React.FC = () => {
         const releasedPosForRequest = purchaseOrders
           .filter(
             (p) =>
-              isIssuedLikePoStatus(p.status) &&
+              isListedPoStatus(p.status) &&
               (String(p.formData?.requestId) === String(request.id) ||
                 String(p.formData?.requestCode).toUpperCase() === String(request.code).toUpperCase()),
           )
@@ -3780,7 +3803,7 @@ const Procurement: React.FC = () => {
     const requestPoNumbers = new Set(requestRecords.map((r) => r.poNumber));
 
     const unlinkedReleasedPOs = purchaseOrders
-      .filter((p) => isIssuedLikePoStatus(p.status))
+      .filter((p) => isListedPoStatus(p.status))
       .filter((p) => {
         const poNumber = String(p.poNumber ?? '').replace('DPO', 'PO');
         if (requestPoNumbers.has(poNumber)) return false;
@@ -3789,7 +3812,12 @@ const Procurement: React.FC = () => {
           (String(p.formData?.requestId) && String(p.formData?.requestId) === String(r.id)) ||
           (String(p.formData?.requestCode) && String(p.formData?.requestCode).toUpperCase() === String(r.code).toUpperCase())
         );
-        return !linked;
+        // A cancelled PO reopens its procurement request (cancelPo → syncRequestStatus 'New'), and
+        // 'New' is not in REQUEST_STATUSES_FOR_ISSUED_PO_LIST — so the request-linked branch above
+        // skips it while this one used to reject it for being linked at all. That pincer hid every
+        // cancelled PO that had a request, independently of the status gate. The
+        // `requestPoNumbers` check above already prevents a double row when the request DID emit it.
+        return !linked || isPoStatusCancelled(p.status);
       });
 
     const unlinkedRecords = unlinkedReleasedPOs.map((po) => {
@@ -3894,7 +3922,7 @@ const Procurement: React.FC = () => {
     return Array.from(dedupedByPo.values()).filter(
       (r) => !isIssuedPoHandedOffToWarehouse(r, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides),
     );
-  }, [draftPOs, isIssuedLikePoStatus, purchaseOrders, quotes, requests, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides]);
+  }, [draftPOs, isListedPoStatus, purchaseOrders, quotes, requests, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides]);
 
   /** KPI + timeline stage counts for Issued POs itemised dashboard (aligned with fulfillment overview). */
   const issuedPoOverviewKpis = useMemo(() => {
@@ -10477,26 +10505,33 @@ const Procurement: React.FC = () => {
             </div>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-ink-3 mb-1">Vendor</label>
-                <select
-                  value={editDraftPOForm.vendor}
-                  onChange={(e) => {
-                    const name = e.target.value;
+                <label htmlFor="edit-draft-po-vendor" className="block text-xs font-semibold text-ink-3 mb-1">Vendor</label>
+                {/* Typeahead rather than a <select>: the vendor master runs to hundreds of rows, and
+                    a plain dropdown made you scroll it by eye. Searches name, code, city and GSTIN,
+                    the same as everywhere else a vendor is picked. */}
+                <VendorClientNameTypeahead
+                  inputId="edit-draft-po-vendor"
+                  parties={vendorClientList ?? []}
+                  loading={vendorClientsLoading}
+                  partyKind="vendor"
+                  placeholder="Search vendor by name, code, city…"
+                  selectedId={
+                    (vendorClientList ?? []).find(
+                      (v) => String(v.name ?? '').trim() === String(editDraftPOForm.vendor ?? '').trim(),
+                    )?.id ?? ''
+                  }
+                  onSelect={(party) => {
+                    const name = String(party?.name ?? '').trim();
                     const matched = vendors.find((v) => v.name === name);
                     const fromMaster = String(matched?.paymentTerms ?? '').trim();
                     setEditDraftPOForm((f) => ({
                       ...f,
                       vendor: name,
-                      paymentTerms: fromMaster || f.paymentTerms,
+                      // Clearing the vendor must not strand the previous vendor's terms on the PO.
+                      paymentTerms: name ? fromMaster || f.paymentTerms : '',
                     }));
                   }}
-                  className="w-full rounded-lg border border-border px-3 py-2 text-sm"
-                >
-                  <option value="">— Select vendor —</option>
-                  {vendors.map((v) => (
-                    <option key={v.id} value={v.name}>{v.name}</option>
-                  ))}
-                </select>
+                />
               </div>
               <div>
                 <label className="block text-xs font-semibold text-ink-3 mb-1">Payment terms</label>
@@ -10528,6 +10563,9 @@ const Procurement: React.FC = () => {
                     <thead>
                       <tr className="bg-surface-3 text-left text-[11px] tracking-wide text-ink-3 border-b border-border">
                         <th scope="col" className="px-2 py-2 font-semibold">Item</th>
+                        {/* Column order here must match the <td> order in the body row below:
+                            Item · Lead · Qty · Price · GST · Total. */}
+                        <th scope="col" className="px-2 py-2 font-semibold text-right w-28" title="Vendor lead time in days. Drives the Lead Connecting Date column on the Purchase Orders list.">Lead (days)</th>
                         <th scope="col" className="px-2 py-2 font-semibold text-right w-32">Qty</th>
                         <th scope="col" className="px-2 py-2 font-semibold text-right w-36">Price/unit (₹)</th>
                         <th scope="col" className="px-2 py-2 font-semibold text-right w-32">GST</th>
@@ -10540,9 +10578,37 @@ const Procurement: React.FC = () => {
                           <td className="px-2 py-2 align-top">
                             <p className="font-medium text-ink leading-snug">{line.item}</p>
                             <p className="text-[10px] text-ink-3">{line.itemCode}</p>
-                            {line.leadTimeDays != null ? (
-                              <p className="text-[10px] text-ink-3 mt-0.5">Lead {line.leadTimeDays}d</p>
-                            ) : null}
+                          </td>
+                          <td className="px-2 py-2 text-right align-top">
+                            {/* Editable because plenty of POs arrive with no lead time at all —
+                                imported ones, and any raised without a vendor quotation. Until it
+                                can be filled in here, those lines can never show a Lead Connecting
+                                Date. */}
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="—"
+                              aria-label={`Lead time in days for ${line.itemCode || line.item}`}
+                              title="Days from PO date to expected arrival. Leave blank if unknown."
+                              value={
+                                editDraftPoLeadDraft[idx] ??
+                                (line.leadTimeDays != null ? String(line.leadTimeDays) : '')
+                              }
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                setEditDraftPoLeadDraft((prev) => ({ ...prev, [idx]: raw }));
+                                const cleaned = raw.replace(/[^\d]/g, '');
+                                // Blank clears it back to unknown rather than writing 0 — a zero
+                                // lead means "arrives the day it is ordered", which is a different
+                                // claim from "nobody has told us".
+                                const leadTimeDays = cleaned === '' ? undefined : Number(cleaned);
+                                const next = editDraftPOForm.lineItems.map((l, i) =>
+                                  i === idx ? { ...l, leadTimeDays } : l,
+                                );
+                                setEditDraftPOForm((f) => ({ ...f, lineItems: next }));
+                              }}
+                              className="w-full rounded border border-border px-2 py-1 text-right tabular-nums"
+                            />
                           </td>
                           <td className="px-2 py-2 text-right align-top">
                             <input

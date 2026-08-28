@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { mergePurchaseOrderRecords } from '../purchaseOrderRecordsMerge';
+import {
+  mergePurchaseOrderRecords,
+  isPoStatusCancelled,
+  isPoStatusIssuedLike,
+  isPoStatusListed,
+} from '../purchaseOrderRecordsMerge';
 import type { DraftPO, ProcurementRequest } from '../../types/procurement.types';
 
 describe('mergePurchaseOrderRecords', () => {
@@ -185,5 +190,75 @@ describe('mergePurchaseOrderRecords', () => {
     expect(merged).toHaveLength(1);
     expect(merged[0].connectingDateByItem).not.toBeNull();
     expect(merged[0].connectingDateByItem?.['12pt01']).toBe('2026-10-08');
+  });
+});
+
+describe('PO status predicates — cancelled POs must stay visible', () => {
+  /**
+   * Cancelling writes purchase_orders.status = 'Cancelled' (cancelPo). The Purchase Orders list
+   * gated on issued-only statuses, so the row vanished the moment it was cancelled: 198 POs loaded,
+   * the view's own "Cancelled" filter matching 0 of them, and no way to audit what was cancelled.
+   */
+  it('recognises the exact status the backend writes on cancel', () => {
+    expect(isPoStatusCancelled('Cancelled')).toBe(true);
+    expect(isPoStatusCancelled('cancelled')).toBe(true);
+    expect(isPoStatusCancelled('Released')).toBe(false);
+  });
+
+  it('does NOT treat a cancelled PO as live', () => {
+    // Guards that ask "is this PO live?" must keep saying no — a cancelled PO should not block
+    // deleting its request, and must not be shippable.
+    expect(isPoStatusIssuedLike('Cancelled')).toBe(false);
+    expect(isPoStatusIssuedLike('Released')).toBe(true);
+    expect(isPoStatusIssuedLike('Issued')).toBe(true);
+  });
+
+  it('DOES list a cancelled PO', () => {
+    expect(isPoStatusListed('Cancelled')).toBe(true);
+    expect(isPoStatusListed('Released')).toBe(true);
+    expect(isPoStatusListed('Issued')).toBe(true);
+  });
+
+  it('still excludes statuses that were never in the list', () => {
+    // Draft POs reach the view through the draftPOs merge, not this gate — widening it to
+    // everything would double up every draft row.
+    expect(isPoStatusListed('Draft')).toBe(false);
+    expect(isPoStatusListed('Completed')).toBe(false);
+    expect(isPoStatusListed('')).toBe(false);
+    expect(isPoStatusListed(null)).toBe(false);
+    expect(isPoStatusListed(undefined)).toBe(false);
+  });
+
+  it('is the widening of issued-like, never the reverse', () => {
+    for (const s of ['Released', 'Issued', 'Cancelled', 'Draft', 'Completed', null]) {
+      if (isPoStatusIssuedLike(s)) expect(isPoStatusListed(s)).toBe(true);
+    }
+  });
+});
+
+describe('mergePurchaseOrderRecords keeps a cancelled verdict', () => {
+  it('does not downgrade a cancelled issued record to "issued"', () => {
+    // mapLegacyToWorkflowStatus falls through to 'issued' for anything it does not recognise, so
+    // the cancelled label set upstream has to survive the merge.
+    const [row] = mergePurchaseOrderRecords(
+      [
+        {
+          request: { id: '1', code: 'PR-1', type: 'RM', priority: 'Medium', status: 'New', items: [], dueDate: '', createdDate: '', source: 'Excel Import' } as ProcurementRequest,
+          poNumber: 'PO-999',
+          vendor: 'Acme',
+          status: 'Released',
+          poWorkflowStatus: 'cancelled',
+          etaDays: 0,
+          etaDateDisplay: '',
+          lineItems: [],
+          grandTotal: 0,
+          requestCode: 'PR-1',
+          createdDate: '2026-08-01',
+        },
+      ] as never,
+      [],
+      [],
+    );
+    expect(row?.poWorkflowStatus).toBe('cancelled');
   });
 });

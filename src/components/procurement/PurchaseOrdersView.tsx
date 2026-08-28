@@ -24,6 +24,7 @@ import { initiateTransit, createConsolidatedShipment } from '../../services/grn.
 import { CommentsPanel } from '../orders/CommentsPanel';
 import { fetchCommentCounts } from '../../services/fulfillment.service';
 import { poBackendId } from '../../services/poApproval.service';
+import { leadConnectingDateForLine, leadConnectingSummaryForPo } from '../../lib/poLeadConnectingDate';
 
 /** Existing 3-state GRN status → spec 6-stage (best-effort until the stage axis is added). */
 function mapGrnStatusToStage(status: string | null | undefined): GrnStage {
@@ -497,6 +498,8 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
       record: IssuedPOViewRecord; item: string; itemCode: string; itemKey: string; poQty: number; unit?: string;
       grnLines: { grnNo: string; qty: number; stage: GrnStage }[];
       received: number; billed: number; otherPos: number; daysOpen: number; leadDays: number;
+      /** PO date + this line's lead days. null when either is unknown — see normalizeLeadDays. */
+      leadConnectingDate: string | null;
     }> = [];
     const now = Date.now();
     for (const r of records) {
@@ -528,6 +531,10 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
           grnLines, received, billed,
           otherPos: Math.max(0, (posByItem.get(itemKey)?.size ?? 1) - 1),
           daysOpen, leadDays: Number(l.leadTimeDays) || 0,
+          // Built from the RAW leadTimeDays, not the `|| 0` above: that fallback is fine for the SLA
+          // column (which only compares elapsed days) but would date every unquoted line to the PO
+          // date itself.
+          leadConnectingDate: leadConnectingDateForLine(r.createdDate, l.leadTimeDays),
         });
       }
     }
@@ -724,6 +731,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                     <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">GRN Qty (GRN# · qty)</th>
                     <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">GRN Status</th>
                     <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">Purchase Status</th>
+                    <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap" title="PO date + this item's lead days">Lead Connecting Date</th>
                     <SortableTableTh label="SLA" column="sla" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
                     <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">Other POs</th>
                     <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">Action</th>
@@ -777,6 +785,16 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                         </td>
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           {psCfg ? <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${psCfg.text} ${psCfg.bg} ${psCfg.border}`}>{psCfg.label}{ps === 'received' ? ` · ${lr.received.toLocaleString('en-IN')}` : ps === 'billed' ? ` · ${lr.billed.toLocaleString('en-IN')}` : ''}</span> : <span className="text-[10px] text-ink-4">— draft</span>}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {lr.leadConnectingDate ? (
+                            <>
+                              <p className="text-xs text-ink tabular-nums">{fmtDate(lr.leadConnectingDate)}</p>
+                              <p className="text-[10px] text-ink-4">{lr.leadDays}d lead</p>
+                            </>
+                          ) : (
+                            <span className="text-[10px] text-ink-4" title="No lead time on record for this item">— no lead time</span>
+                          )}
                         </td>
                         <td className="px-3 py-2.5 whitespace-nowrap"><span className={`text-[11px] font-mono ${slaCls}`}>{slaText}</span></td>
                         <td className="px-3 py-2.5 whitespace-nowrap text-center">
@@ -835,6 +853,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                     <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">PO Status</th>
                     <SortableTableTh label="PO Value" column="value" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} align="right" />
                     <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">Connecting</th>
+                    <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap" title="PO date + each item's lead days">Lead Connecting Date</th>
                     <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide text-center whitespace-nowrap">In-Transit</th>
                     <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide text-center whitespace-nowrap">Received</th>
                     <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide text-center whitespace-nowrap">Billed</th>
@@ -850,7 +869,9 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                         className="bg-surface-3 border-y border-border hover:bg-surface-2 cursor-pointer select-none"
                         onClick={() => toggleVendor(`po:${vendor}`)}
                       >
-                        <td colSpan={10} className="px-3 py-2">
+                        {/* Spans the full PO-wise header (12 columns incl. Lead Connecting Date).
+                            Was 10 — already one short before this column was added. */}
+                        <td colSpan={12} className="px-3 py-2">
                           <div className="flex items-center gap-2">
                             <ChevronDown
                               size={13}
@@ -900,6 +921,29 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                                     {conn.label}
                                     {conn.items.length > 1 && (
                                       <div className="text-[9.5px] text-ink-4">{conn.items.length} items</div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </td>
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              {(() => {
+                                const lead = leadConnectingSummaryForPo(r.createdDate, r.lineItems);
+                                if (!lead) {
+                                  return <span className="text-xs text-ink-4" title="No lead time on record for any item on this PO">—</span>;
+                                }
+                                // The PO is only fully in once its slowest item lands, so the range
+                                // reads earliest–latest and the "n items" note below carries the
+                                // count that could not be dated at all.
+                                const label =
+                                  lead.earliest === lead.latest
+                                    ? fmtDate(lead.latest)
+                                    : `${fmtDate(lead.earliest)} – ${fmtDate(lead.latest)}`;
+                                return (
+                                  <div className="text-xs text-ink-2" title={lead.items.join('\n')}>
+                                    {label}
+                                    {lead.unknownCount > 0 && (
+                                      <div className="text-[9.5px] text-warn">{lead.unknownCount} without lead time</div>
                                     )}
                                   </div>
                                 );
