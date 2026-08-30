@@ -4,14 +4,20 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
+  allocateConsolidatedReqAcrossBatches,
   batchCoverageBadgeClass,
   batchCoverageLabel,
   batchCoverageRowClass,
   batchCoverageTier,
+  batchCoverageDetailMap,
+  batchCoverageTierMap,
   isItemFullyCovered,
   itemCoverageTierFromBatches,
+  releaseBatchPickKey,
   type BatchCoverageTier,
+  type ItemsInvolvedAllocationRow,
 } from '../itemsInvolvedBatchCoverage';
+import type { PlanningBatchAllRow } from '../../services/planningExtracted.service';
 
 const tier = (batchQty: number, sih: number, poQty: number, itemFullyCovered = false) =>
   batchCoverageTier({ batchQty, sih, poQty, itemFullyCovered });
@@ -187,6 +193,97 @@ describe('batchCoverageRowClass', () => {
   });
 });
 
+describe('batch-centric coverage (Batches tab)', () => {
+  // Reproduces the real screenshot: 15 ML AMBER GLASS BOTTLE (PM) — SIH 0, PO 30,000, two 450 KG
+  // batches each requiring 30,000 PCS. batchQty (30,000) <= sih+poQty (0+30,000) → yellow, matching
+  // what "Batches using 4001234" showed for both PE-3669-B1 and PE-3507-B1.
+  const item: ItemsInvolvedAllocationRow = {
+    code: 'PM-4001234',
+    name: '15 ML AMBER GLASS BOTTLE WITH WHITE DROPPER SET WITH PLUG',
+    itemType: 'PM',
+    pack_material_id: 4001234,
+    sihNum: 0,
+    poQtyNum: 30000,
+  };
+  const pmBatch = (id: number, batchCode: string): PlanningBatchAllRow => ({
+    id,
+    planningExtractedId: 204,
+    sequence: id,
+    batchCode,
+    sizeKg: 450,
+    rmLines: [],
+    pmLines: [{ pack_material_id: 4001234, qty_per_unit: 1 }],
+    sent: true,
+    orderQty: '1000',
+    totalKg: '15',
+    productName: 'SK GLOW GETTER ARBUTIN BRIGHTENING SERUM 15ML',
+    soNumber: 'SO-00204',
+  });
+  const batches = [pmBatch(1, 'PE-3669-B1'), pmBatch(2, 'PE-3507-B1')];
+
+  it('allocateConsolidatedReqAcrossBatches gives each batch its own 30,000 pcs requirement', () => {
+    const alloc = allocateConsolidatedReqAcrossBatches(item, batches);
+    expect(alloc.get(releaseBatchPickKey(batches[0]))).toBe(30000);
+    expect(alloc.get(releaseBatchPickKey(batches[1]))).toBe(30000);
+  });
+
+  it('batchCoverageTierMap tints both batches yellow, keyed by releaseBatchPickKey', () => {
+    const tiers = batchCoverageTierMap([item], batches);
+    expect(tiers.get(releaseBatchPickKey(batches[0]))).toBe('yellow');
+    expect(tiers.get(releaseBatchPickKey(batches[1]))).toBe('yellow');
+    expect(tiers.size).toBe(2);
+  });
+
+  it('omits unsent batches — the Batches tab only lists released batches', () => {
+    // A third sent batch keeps total sent demand (60,000) above SIH+PO (30,000) so this isn't
+    // also exercising the "excluding it makes the item fully covered" case below.
+    const thirdSent = pmBatch(3, 'PE-0001-B1');
+    const unsent = { ...batches[0], sent: false };
+    const tiers = batchCoverageTierMap([item], [unsent, batches[1], thirdSent]);
+    expect(tiers.has(releaseBatchPickKey(unsent))).toBe(false);
+    expect(tiers.get(releaseBatchPickKey(batches[1]))).toBe('yellow');
+    expect(tiers.get(releaseBatchPickKey(thirdSent))).toBe('yellow');
+  });
+
+  it('excluding an unsent batch can bring sent demand within supply — greens the rest', () => {
+    // Only one 30,000 pcs batch is actually sent; SIH 0 + PO 30,000 exactly covers it, so — unlike
+    // the item-level view, which would also count the unsent batch — this batch reads green here,
+    // matching getItemsInvolvedCoverageTier's own "released batches only" total.
+    const unsent = { ...batches[0], sent: false };
+    const tiers = batchCoverageTierMap([item], [unsent, batches[1]]);
+    expect(tiers.get(releaseBatchPickKey(batches[1]))).toBe('green');
+  });
+
+  it('a batch spanning a red item and a green item reads red — the worst tier wins', () => {
+    const shortItem: ItemsInvolvedAllocationRow = { ...item, code: 'PM-SHORT', sihNum: 0, poQtyNum: 0 };
+    const coveredItem: ItemsInvolvedAllocationRow = {
+      ...item,
+      code: 'PM-COVERED',
+      pack_material_id: 4001235,
+      sihNum: 100000,
+      poQtyNum: 0,
+    };
+    const sharedBatch: PlanningBatchAllRow = {
+      ...pmBatch(3, 'PE-9999-B1'),
+      pmLines: [
+        { pack_material_id: 4001234, qty_per_unit: 1 }, // matches shortItem (via item's own pack_material_id below)
+        { pack_material_id: 4001235, qty_per_unit: 1 }, // matches coveredItem
+      ],
+    };
+    const tiers = batchCoverageTierMap(
+      [{ ...shortItem, pack_material_id: 4001234 }, coveredItem],
+      [sharedBatch],
+    );
+    expect(tiers.get(releaseBatchPickKey(sharedBatch))).toBe('red');
+  });
+
+  it('a batch with no matching BOM line for any item gets no entry (stays untinted)', () => {
+    const unrelatedBatch: PlanningBatchAllRow = { ...pmBatch(9, 'PE-0000-B1'), pmLines: [] };
+    const tiers = batchCoverageTierMap([item], [unrelatedBatch]);
+    expect(tiers.has(releaseBatchPickKey(unrelatedBatch))).toBe(false);
+  });
+});
+
 describe('batchCoverageLabel', () => {
   it('names every tier in words, so the meaning never rests on colour alone', () => {
     expect(batchCoverageLabel('green')).toBe('COVERED');
@@ -207,5 +304,89 @@ describe('batchCoverageLabel', () => {
     expect(new Set(pills).size).toBe(4);
     // White text on a solid fill, so the pill stays readable over any row tint.
     for (const p of pills) expect(p).toContain('text-white');
+  });
+});
+
+describe('why the two tabs disagree — item scope vs batch scope', () => {
+  /**
+   * The reported case. PE-3669-B1 reads NEEDS PO in "Batches using 4001234" but SHORT in the
+   * Batches tab, which looks like a contradiction and is not: the modal grades ONE material on the
+   * batch, the tab grades ALL of them.
+   *
+   * Confirmed against the database: the batch carries 15 materials. 4001234 has SIH 0 + PO 30,000,
+   * so it is yellow. The label 5L01743 has SIH 0 and NO purchase order at all, so it is red — and
+   * red is what the batch row must show, because the batch cannot run without the label.
+   */
+  const bottle: ItemsInvolvedAllocationRow = {
+    code: '4001234',
+    name: '15 ML AMBER GLASS BOTTLE WITH WHITE DROPPER SET WITH PLUG',
+    itemType: 'PM',
+    pack_material_id: 4001234,
+    sihNum: 0,
+    poQtyNum: 30000,
+  };
+  const label: ItemsInvolvedAllocationRow = {
+    code: '5L01743',
+    name: 'SK GLOW GETTER ARBUTIN BRIGHTENING SERUM 15ML LABEL ( new )',
+    itemType: 'PM',
+    pack_material_id: 5101743,
+    sihNum: 0,
+    poQtyNum: 0, // no PO exists for this one
+  };
+  // BOTH batches, as in the real SO — each needs 30,000, so the bottle's total requirement is
+  // 60,000 against SIH 0 + PO 30,000 and it is NOT fully covered. Using a single batch here would
+  // make the bottle green (0 + 30,000 covers 30,000) and quietly stop reproducing the report.
+  const mkBatch = (id: number, batchCode: string): PlanningBatchAllRow => ({
+    id,
+    planningExtractedId: 3669,
+    sequence: id,
+    batchCode,
+    sizeKg: 450,
+    rmLines: [],
+    pmLines: [
+      { pack_material_id: 4001234, qty_per_unit: 1 },
+      { pack_material_id: 5101743, qty_per_unit: 1 },
+    ],
+    sent: true,
+    orderQty: '1000',
+    totalKg: '15',
+    productName: 'SK GLOW GETTER ARBUTIN BRIGHTENING SERUM 15ML',
+    soNumber: 'SO-00204',
+  });
+  const twoBatches = [mkBatch(1, 'PE-3669-B1'), mkBatch(2, 'PE-3507-B1')];
+  const batch = twoBatches[0];
+  const key = releaseBatchPickKey(batch);
+
+  it('grades the bottle yellow on its own — what the item modal shows', () => {
+    const covered = isItemFullyCovered(60000, bottle.sihNum, bottle.poQtyNum);
+    expect(tier(30000, bottle.sihNum, bottle.poQtyNum, covered)).toBe('yellow');
+  });
+
+  it('grades the label red on its own — no stock and no PO', () => {
+    const covered = isItemFullyCovered(60000, label.sihNum, label.poQtyNum);
+    expect(tier(30000, label.sihNum, label.poQtyNum, covered)).toBe('red');
+  });
+
+  it('the batch row takes the worst of the two, so it is red', () => {
+    expect(batchCoverageTierMap([bottle, label], twoBatches).get(key)).toBe('red');
+  });
+
+  it('names the material responsible, so the red is explainable from the Batches tab', () => {
+    const detail = batchCoverageDetailMap([bottle, label], twoBatches).get(key);
+    expect(detail?.tier).toBe('red');
+    expect(detail?.driverCode).toBe('5L01743');
+    expect(detail?.itemCount).toBe(2);
+  });
+
+  it('the batch goes yellow once the label is covered — the bottle was never the constraint', () => {
+    const orderedLabel = { ...label, poQtyNum: 30000 };
+    const detail = batchCoverageDetailMap([bottle, orderedLabel], twoBatches).get(key);
+    expect(detail?.tier).toBe('yellow');
+  });
+
+  it('detail and tier maps never disagree', () => {
+    const tiers = batchCoverageTierMap([bottle, label], twoBatches);
+    const detail = batchCoverageDetailMap([bottle, label], twoBatches);
+    for (const [k, d] of detail) expect(tiers.get(k)).toBe(d.tier);
   });
 });

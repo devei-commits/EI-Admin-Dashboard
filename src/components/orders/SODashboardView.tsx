@@ -563,7 +563,13 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
       void load();
     } catch (e) {
       console.error('SO action failed:', e);
-      alert('Operation failed. Please try again.');
+      // Surface the backend's actual reason (e.g. "already confirmed by Production") instead of a
+      // generic message — a blocked cancel is a decision the user needs to act on, not just retry.
+      const body = (e as { body?: { error?: string } })?.body;
+      const msg = typeof body?.error === 'string' && body.error.trim()
+        ? body.error
+        : 'Operation failed. Please try again.';
+      alert(msg);
     } finally {
       setConfirmLoading(false);
     }

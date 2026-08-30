@@ -19,6 +19,10 @@
  * The item-level gate below is what signals an overall shortfall.
  */
 
+import { roundMaterialQty } from '../utils/formatQty';
+import { parseQtyLabelInt } from './parseQtyLabel';
+import type { PlanningBatchAllRow } from '../services/planningExtracted.service';
+
 export type BatchCoverageTier = 'green' | 'pink' | 'yellow' | 'red' | 'none';
 
 /** Non-negative finite number, so a negative or NaN input cannot inflate available supply. */
@@ -172,3 +176,201 @@ export const BATCH_COVERAGE_LEGEND: { tier: Exclude<BatchCoverageTier, 'none'>; 
   { tier: 'yellow', label: 'Batch needs the PO' },
   { tier: 'red', label: 'Batch exceeds stock + PO' },
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Batch-centric coverage — powers the same red/pink/yellow/green tint on the Batches tab
+// (`/planning/batches`) that "Batches using <item>" already shows per item, so a batch reads the
+// same colour wherever it appears.
+//
+// This is a deliberate, self-contained duplicate of the per-item allocation math that lives as
+// closures inside Planning.tsx's `Planning` component (`allocateConsolidatedReqAcrossBatches`,
+// `releaseBatchPickKey`, `getUsedInBatchesForItem`) — those close over component state and are not
+// reachable from the separately-defined `PlanningBatchesTab`. Keep the two in sync if the
+// allocation rule ever changes: RM per batch = batchKg × %w/w; PM per batch = batchUnits ×
+// qty_per_unit, batchUnits = batchKg ÷ (PI.totalKg / PI.orderQty). Mirrors the backend
+// `accumulatePlannedBatchIntoQtyMaps`.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Minimal shape needed from an Items Involved row — duck-typed so this lib doesn't need to import
+ *  Planning.tsx's page-local `ItemsInvolvedDisplayRow` type. */
+export interface ItemsInvolvedAllocationRow {
+  code: string;
+  name: string;
+  itemType: 'RM' | 'PM';
+  raw_material_id?: number;
+  pack_material_id?: number;
+  sihNum: number;
+  poQtyNum: number;
+  planningExtractedIds?: number[];
+  usedInProducts?: string[];
+}
+
+type BatchBomLine = {
+  raw_material_id?: number; pack_material_id?: number;
+  rm_code?: string; pm_code?: string; code?: string;
+  inci_name?: string; name?: string; description?: string;
+  pct_w_w?: number; pct?: number; qty_per_unit?: number; qty?: number;
+};
+
+/** Stable key for one batch, unique across all planning-extracted rows. */
+export const releaseBatchPickKey = (batch: PlanningBatchAllRow): string =>
+  `${batch.planningExtractedId}-${batch.id ?? batch.sequence ?? batch.batchCode ?? 'batch'}`;
+
+/** The batches (from `allBatches`) whose own BOM copy actually contains this item. */
+function batchesForItem(
+  item: ItemsInvolvedAllocationRow,
+  allBatches: PlanningBatchAllRow[],
+): PlanningBatchAllRow[] {
+  const itemCode = String(item.code ?? '').trim().toLowerCase();
+  const itemName = String(item.name ?? '').trim().toLowerCase();
+  const itemId = item.itemType === 'RM' ? Number(item.raw_material_id) : Number(item.pack_material_id);
+  const peIds = new Set(
+    (item.planningExtractedIds ?? [])
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id) && id > 0),
+  );
+  const allowedProductNames = (item.usedInProducts ?? [])
+    .map((p) => String(p ?? '').trim().toLowerCase())
+    .filter(Boolean);
+
+  return allBatches
+    .filter((b) => (peIds.size === 0 ? true : peIds.has(Number(b.planningExtractedId))))
+    .filter((b) =>
+      allowedProductNames.length === 0
+        ? true
+        : allowedProductNames.includes(String(b.productName ?? '').trim().toLowerCase()),
+    )
+    .filter((b) => {
+      const lines = (item.itemType === 'RM' ? b.rmLines : b.pmLines) ?? [];
+      return (lines as BatchBomLine[]).some((line) => {
+        const lineId = item.itemType === 'RM' ? Number(line.raw_material_id) : Number(line.pack_material_id);
+        const lineCode = String(line.rm_code ?? line.pm_code ?? line.code ?? '').trim().toLowerCase();
+        const lineLabel = String(line.inci_name ?? line.name ?? line.description ?? '').trim().toLowerCase();
+        const byId = Number.isFinite(itemId) && itemId > 0 && Number.isFinite(lineId) && lineId === itemId;
+        const byCode = itemCode.length > 0 && lineCode === itemCode;
+        const byName = itemName.length > 0 && lineLabel === itemName;
+        return byId || byCode || byName;
+      });
+    });
+}
+
+/**
+ * Per-batch requirement for an item, computed from each batch's OWN BOM — not by distributing the
+ * item's consolidated total across batches by kg (packaging is per finished unit, not per kg, and
+ * units-per-kg varies by fill size).
+ */
+export function allocateConsolidatedReqAcrossBatches(
+  item: ItemsInvolvedAllocationRow,
+  batches: PlanningBatchAllRow[],
+): Map<string, number> {
+  const out = new Map<string, number>();
+  const itemCode = String(item.code ?? '').trim().toLowerCase();
+  const itemName = String(item.name ?? '').trim().toLowerCase();
+  const itemId = item.itemType === 'RM' ? Number(item.raw_material_id) : Number(item.pack_material_id);
+
+  const lineMatchesItem = (line: BatchBomLine): boolean => {
+    const lineId = item.itemType === 'RM' ? Number(line.raw_material_id) : Number(line.pack_material_id);
+    const lineCode = String(line.rm_code ?? line.pm_code ?? line.code ?? '').trim().toLowerCase();
+    const lineLabel = String(line.inci_name ?? line.name ?? line.description ?? '').trim().toLowerCase();
+    const byId = Number.isFinite(itemId) && itemId > 0 && Number.isFinite(lineId) && lineId === itemId;
+    const byCode = itemCode.length > 0 && lineCode === itemCode;
+    const byName = itemName.length > 0 && lineLabel === itemName;
+    return byId || byCode || byName;
+  };
+
+  for (const batch of batches) {
+    const key = releaseBatchPickKey(batch);
+    const sizeKg = Number(batch.sizeKg) || 0;
+    const lines = ((item.itemType === 'RM' ? batch.rmLines : batch.pmLines) ?? []) as BatchBomLine[];
+    const line = lines.find(lineMatchesItem);
+    if (!line || !(sizeKg > 0)) { out.set(key, 0); continue; }
+
+    if (item.itemType === 'RM') {
+      const pct = Number(line.pct_w_w ?? line.pct ?? 0) || 0;
+      out.set(key, roundMaterialQty((sizeKg * pct) / 100));
+    } else {
+      const orderQty = parseQtyLabelInt(batch.orderQty);
+      const totalKg = parseFloat(String(batch.totalKg ?? '').replace(/[^\d.]/g, '')) || 0;
+      const kgPerUnit = orderQty > 0 && totalKg > 0 ? totalKg / orderQty : 0;
+      const unitsForBatch = kgPerUnit > 0 ? sizeKg / kgPerUnit : 0;
+      const qtyPerUnit = Number(line.qty_per_unit ?? line.qty ?? 1) || 1;
+      out.set(key, Math.round(unitsForBatch * qtyPerUnit));
+    }
+  }
+  return out;
+}
+
+/**
+ * Coverage tier for every released (sent) batch, keyed by `releaseBatchPickKey` — the batch-centric
+ * mirror of `itemCoverageTierFromBatches` (item-centric: worst tier across its batches). Here it's
+ * the worst tier, across every item that batch consumes, for that one batch — so a batch involving
+ * both a covered RM and a short PM reads red, same as it would if you opened each item's modal.
+ */
+export function batchCoverageTierMap(
+  itemsInvolved: ItemsInvolvedAllocationRow[],
+  allBatches: PlanningBatchAllRow[],
+): Map<string, BatchCoverageTier> {
+  const detail = batchCoverageDetailMap(itemsInvolved, allBatches);
+  const out = new Map<string, BatchCoverageTier>();
+  for (const [key, d] of detail) out.set(key, d.tier);
+  return out;
+}
+
+export type BatchCoverageDetail = {
+  /** Worst tier across every material this batch consumes. */
+  tier: BatchCoverageTier;
+  /** The material that forces that tier — the answer to "why is this batch red?". */
+  driverCode: string;
+  /** How many of the batch's materials carry a tier at all. */
+  itemCount: number;
+};
+
+/**
+ * Same rollup as `batchCoverageTierMap`, but it also names the material responsible.
+ *
+ * Worth the extra bookkeeping because the batch badge is otherwise unexplainable from the screen it
+ * is on. A batch reads SHORT while the item modal you just came from reads NEEDS PO, and nothing
+ * says the two are answering different questions — the modal grades ONE material on this batch,
+ * this grades ALL of them. Naming the driver turns an apparent contradiction into an obvious fact:
+ * PE-3669-B1 is red because its label 5L01743 has neither stock nor a PO, not because of the bottle
+ * you were looking at.
+ */
+export function batchCoverageDetailMap(
+  itemsInvolved: ItemsInvolvedAllocationRow[],
+  allBatches: PlanningBatchAllRow[],
+): Map<string, BatchCoverageDetail> {
+  const perBatch = new Map<string, { tier: BatchCoverageTier; code: string }[]>();
+  for (const item of itemsInvolved) {
+    const itemBatches = batchesForItem(item, allBatches);
+    const sentBatches = itemBatches.filter((b) => b.sent === true);
+    if (sentBatches.length === 0) continue;
+
+    const alloc = allocateConsolidatedReqAcrossBatches(item, itemBatches);
+    const batchQtys = sentBatches.map((b) => Number(alloc.get(releaseBatchPickKey(b))) || 0);
+    const sih = Number(item.sihNum) || 0;
+    const poQty = Number(item.poQtyNum) || 0;
+    const totalRequired = batchQtys.reduce((sum, qty) => sum + qty, 0);
+    const itemFullyCovered = isItemFullyCovered(totalRequired, sih, poQty);
+
+    sentBatches.forEach((batch, i) => {
+      const tier = batchCoverageTier({ batchQty: batchQtys[i], sih, poQty, itemFullyCovered });
+      if (tier === 'none') return;
+      const key = releaseBatchPickKey(batch);
+      const arr = perBatch.get(key) ?? [];
+      arr.push({ tier, code: String(item.code ?? '').trim() });
+      perBatch.set(key, arr);
+    });
+  }
+
+  const result = new Map<string, BatchCoverageDetail>();
+  for (const [key, entries] of perBatch) {
+    const tier = itemCoverageTierFromBatches(entries.map((e) => e.tier));
+    const driver = entries.find((e) => e.tier === tier);
+    result.set(key, {
+      tier,
+      driverCode: driver?.code ?? '',
+      itemCount: entries.length,
+    });
+  }
+  return result;
+}

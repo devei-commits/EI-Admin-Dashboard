@@ -3383,6 +3383,142 @@ function ReserveMaterialModal({ batch, type, stockMap, reservedMap, inventoryRow
   );
 }
 
+/**
+ * The batch's RM/PM lines as dispensing items, from its own BOM.
+ *
+ * `batch.dispensingRM` / `dispensingPM` only fill in once dispensing has actually started, so any
+ * screen shown BEFORE that (Schedule Batch, most obviously) has an empty list and can say nothing
+ * about the materials — which is why Material Availability read "No RM items on this batch" on a
+ * batch that plainly has a BOM. The BOM is known from the moment the batch exists, so it is the
+ * right source for anything asking "what does this batch need, and when can we have it".
+ *
+ * Prefers the batch's own BOM copy (planning_batches, the same rows the Planning BOM editor edits)
+ * and falls back to the product master BOM only when the batch carries none. Extracted so the
+ * schedule and detail modals cannot drift apart on how a batch's requirement is computed.
+ */
+function useBatchBomItems(batch: Batch | null): {
+  bomRmItems: DispensingItem[];
+  bomPmItems: DispensingItem[];
+  bomLoading: boolean;
+} {
+  const [bomRmItems, setBomRmItems] = useState<DispensingItem[]>([]);
+  const [bomPmItems, setBomPmItems] = useState<DispensingItem[]>([]);
+  const [bomLoading, setBomLoading] = useState(false);
+
+  const sku = batch?.sku;
+  const productName = batch?.productName;
+  const batchSize = batch?.batchSize;
+  const orderQty = batch?.orderQty;
+  const totalBatches = batch?.totalBatches;
+  const batchPk = (batch as (Batch & { _pk?: number }) | null)?._pk;
+
+  useEffect(() => {
+    if (!sku && !productName) {
+      setBomRmItems([]);
+      setBomPmItems([]);
+      return;
+    }
+    let cancelled = false;
+    setBomLoading(true);
+
+    /** RM required = batch size (kg) × pct w/w. */
+    const rmFrom = (lines: BOMRmLine[], sizeKg: number): DispensingItem[] =>
+      lines
+        .filter((line) => line.rm_code || (line as { code?: string }).code)
+        .map((line) => {
+          const code = (line.rm_code || (line as { code?: string }).code) as string;
+          const pct = Number(line.pct_w_w ?? (line as { pct?: number }).pct ?? 0) || 0;
+          return {
+            code,
+            inci: line.inci_name as string,
+            required: (sizeKg * pct) / 100,
+            dispensed: 0,
+            done: false,
+          };
+        })
+        .filter((x) => x.required > 0);
+
+    /** PM required = units in this batch × qty per unit. */
+    const pmFrom = (lines: BOMPmLine[], units: number): DispensingItem[] =>
+      lines
+        .filter((line) => line.pm_code || (line as { code?: string }).code)
+        .map((line) => {
+          const code = (line.pm_code || (line as { code?: string }).code) as string;
+          const qtyPerUnit = Number(line.qty_per_unit ?? (line as { qty?: number }).qty ?? 1) || 1;
+          return {
+            code,
+            name: (line.description ?? code) as string,
+            required: qtyPerUnit * units,
+            dispensed: 0,
+            done: false,
+          };
+        })
+        .filter((x) => x.required > 0);
+
+    const loadFromBatchBom = batchPk
+      ? fetchBOMByBatchId(batchPk)
+      : Promise.resolve({ success: false, data: undefined });
+
+    void loadFromBatchBom
+      .then((batchBomRes) => {
+        // A batch-specific BOM is authoritative — never fall back to the master BOM behind it.
+        const useBatchBom =
+          batchBomRes.success &&
+          batchBomRes.data &&
+          (batchBomRes.data.source === 'planning_batch' ||
+            batchBomRes.data.rmLines?.length ||
+            batchBomRes.data.pmLines?.length);
+        if (useBatchBom && batchBomRes.data) {
+          const sizeKg =
+            batchBomRes.data.batchSizeKg != null && batchBomRes.data.batchSizeKg > 0
+              ? batchBomRes.data.batchSizeKg
+              : batchSize || 0;
+          const units =
+            batchBomRes.data.batchSizeKg != null && Number(batchBomRes.data.batchSizeKg) > 0
+              ? Number(batchBomRes.data.batchSizeKg)
+              : totalBatches
+                ? Math.ceil((orderQty || 0) / totalBatches)
+                : Number(batchSize) || 0;
+          if (!cancelled) {
+            setBomRmItems(rmFrom((batchBomRes.data.rmLines ?? []) as BOMRmLine[], sizeKg));
+            setBomPmItems(pmFrom((batchBomRes.data.pmLines ?? []) as BOMPmLine[], units));
+          }
+          return null;
+        }
+        return fetchPRProducts().then((res) => {
+          if (!res.success || !res.data?.length) return null;
+          const product = res.data.find(
+            (p) =>
+              ((p as unknown as { zoho_sku_code?: string }).zoho_sku_code ??
+                (p as unknown as { product_sku?: string }).product_sku) === sku ||
+              p.product_name === productName,
+          );
+          return product ? fetchBOMByProductId(product.product_id) : null;
+        });
+      })
+      .then((bomRes) => {
+        if (!bomRes || cancelled) return;
+        const bom = (bomRes as { data?: BOMRecord }).data;
+        if (!bom) return;
+        const units = totalBatches ? Math.ceil((orderQty || 0) / totalBatches) : batchSize || 0;
+        setBomRmItems(rmFrom((bom.rmLines ?? []) as BOMRmLine[], batchSize || 0));
+        setBomPmItems(pmFrom((bom.pmLines ?? []) as BOMPmLine[], units));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setBomRmItems([]);
+        setBomPmItems([]);
+      })
+      .finally(() => {
+        if (!cancelled) setBomLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [sku, productName, batchSize, orderQty, totalBatches, batchPk]);
+
+  return { bomRmItems, bomPmItems, bomLoading };
+}
+
 /* ──────────── SMART SCHEDULE MODAL ─────────────────────────── */
 
 interface SalesOrderOption { orderId: string; customerName?: string; }
@@ -3463,15 +3599,26 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
     ? computeBestScheduleRecommendation(batchWithUnits, equipment, scheduledBatchesWithUnits)
     : null;
 
+  /**
+   * Materials this batch needs. `dispensingRM`/`dispensingPM` only populate once dispensing has
+   * started, and this modal runs long before that — so fall back to the batch BOM. Without the
+   * fallback the whole Material Availability panel was blank on exactly the batches it exists to
+   * help schedule ("No RM items on this batch" against a batch with a full BOM).
+   */
+  const { bomRmItems: scheduleBomRm, bomPmItems: scheduleBomPm, bomLoading: scheduleBomLoading } =
+    useBatchBomItems(batch);
+  const scheduleRmItems = batch?.dispensingRM?.length ? batch.dispensingRM : scheduleBomRm;
+  const schedulePmItems = batch?.dispensingPM?.length ? batch.dispensingPM : scheduleBomPm;
+
   const materialsAvailability = useMemo((): BatchMaterialsAvailableBySummary | null => {
     if (!batch) return null;
     return computeBatchMaterialsAvailableBy(
-      batch.dispensingRM,
-      batch.dispensingPM,
+      scheduleRmItems,
+      schedulePmItems,
       warehouseRowsForMaterialAvailability(inventoryRows),
       today(),
     );
-  }, [batch?.bmrNo, batch?.dispensingRM, batch?.dispensingPM, inventoryRows]);
+  }, [batch, scheduleRmItems, schedulePmItems, inventoryRows]);
 
   const earliestMfgAfterRm = materialsAvailability?.maxRmAvailableBy
     ? earliestMfgDateAfterRmAvailable(materialsAvailability.maxRmAvailableBy)
@@ -3896,7 +4043,7 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
           {/* Material Availability from DB */}
           <div className="mb-5">
             <SectionLabel icon={<Package size={13} />} color="text-brand">Material Availability - Warehouse Inventory</SectionLabel>
-            {materialsAvailability && batch.dispensingRM.length > 0 && (
+            {materialsAvailability && scheduleRmItems.length > 0 && (
               <div className="mb-3 rounded-xl border border-brand-soft bg-brand-soft/80 px-4 py-3">
                 <p className="text-xs font-bold text-brand">
                   All RM available at WH by:{' '}
@@ -3922,10 +4069,12 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <SectionLabel icon={<FlaskConical size={12} />} color="text-brand">Raw Materials</SectionLabel>
-                {batch.dispensingRM.length > 0 ? (
+                {scheduleBomLoading && scheduleRmItems.length === 0 ? (
+                  <p className="text-xs text-ink-4 italic">Loading BOM…</p>
+                ) : scheduleRmItems.length > 0 ? (
                   <div className="overflow-auto max-h-[70vh] rounded-xl border border-hairline text-xs">
                     <table className="w-full"><thead className="sticky top-0 z-20"><tr className="bg-surface-2/80 border-b border-hairline [&_th]:bg-surface-2"><th scope="col" className="px-2 py-1.5 text-left font-semibold text-ink-3">RM</th><th scope="col" className="px-2 py-1.5 text-left">Req</th><th scope="col" className="px-2 py-1.5 text-left">SIH</th><th scope="col" className="px-2 py-1.5 text-left whitespace-nowrap">Available by</th><th scope="col" className="px-2 py-1.5 text-left">Status</th></tr></thead>
-                      <tbody className="divide-y divide-hairline">{batch.dispensingRM.map((r, i) => {
+                      <tbody className="divide-y divide-hairline">{scheduleRmItems.map((r, i) => {
                         const sih = stockRM[r.code] ?? 0; const ok = !isQtyShort(sih, r.required);
                         const availBy = lookupMaterialAvailableBy(materialsAvailability, r.code, 'rm');
                         return <tr key={i} className={!ok ? 'bg-err-soft/50' : ''}><td className="px-2 py-1.5 font-semibold">{r.inci || r.code}</td><td className="px-2 py-1.5 font-mono">{formatQtyExact(r.required, 'kg')}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-ok' : 'text-err'}`}>{formatQtyExact(sih, 'kg')}</td><td className="px-2 py-1.5 font-medium text-brand whitespace-nowrap">{availBy}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-ok-soft text-ok">OK</Badge> : <Badge className="bg-err-soft text-err">Short</Badge>}</td></tr>;
@@ -3936,10 +4085,12 @@ function ScheduleModal({ batch: initialBatch, equipment, batches, team, stockRM,
               </div>
               <div>
                 <SectionLabel icon={<Package size={12} />} color="text-brand">Packaging Materials</SectionLabel>
-                {batch.dispensingPM.length > 0 ? (
+                {scheduleBomLoading && schedulePmItems.length === 0 ? (
+                  <p className="text-xs text-ink-4 italic">Loading BOM…</p>
+                ) : schedulePmItems.length > 0 ? (
                   <div className="overflow-auto max-h-[70vh] rounded-xl border border-hairline text-xs">
                     <table className="w-full"><thead className="sticky top-0 z-20"><tr className="bg-surface-2/80 border-b border-hairline [&_th]:bg-surface-2"><th scope="col" className="px-2 py-1.5 text-left font-semibold text-ink-3">PM</th><th scope="col" className="px-2 py-1.5 text-left">Req</th><th scope="col" className="px-2 py-1.5 text-left">SIH</th><th scope="col" className="px-2 py-1.5 text-left whitespace-nowrap">Available by</th><th scope="col" className="px-2 py-1.5 text-left">Status</th></tr></thead>
-                      <tbody className="divide-y divide-hairline">{batch.dispensingPM.map((p, i) => {
+                      <tbody className="divide-y divide-hairline">{schedulePmItems.map((p, i) => {
                         const sih = stockPM[p.code] ?? 0; const ok = !isQtyShort(sih, p.required);
                         const availBy = lookupMaterialAvailableBy(materialsAvailability, p.code, 'pm');
                         return <tr key={i} className={!ok ? 'bg-err-soft/50' : ''}><td className="px-2 py-1.5 font-semibold">{p.name || p.code}</td><td className="px-2 py-1.5 font-mono">{formatQtyExact(p.required, 'pcs')}</td><td className={`px-2 py-1.5 font-mono ${ok ? 'text-ok' : 'text-err'}`}>{formatQtyExact(sih, 'pcs')}</td><td className="px-2 py-1.5 font-medium text-brand whitespace-nowrap">{availBy}</td><td className="px-2 py-1.5">{ok ? <Badge className="bg-ok-soft text-ok">OK</Badge> : <Badge className="bg-err-soft text-err">Short</Badge>}</td></tr>;
@@ -4169,15 +4320,21 @@ function SmartScheduleModal({ slot, batch: initialBatch, equipment, batches, tea
     ? computeRecommendedScheduleForSlot(slot, batchWithUnits, equipment, scheduledBatchesWithUnits)
     : null;
 
+  // Same BOM fallback as ScheduleModal: before dispensing starts the dispensing arrays are empty,
+  // which left this modal's "RM available by" date with nothing to compute from.
+  const { bomRmItems: smartBomRm, bomPmItems: smartBomPm } = useBatchBomItems(batch);
+  const smartRmItems = batch?.dispensingRM?.length ? batch.dispensingRM : smartBomRm;
+  const smartPmItems = batch?.dispensingPM?.length ? batch.dispensingPM : smartBomPm;
+
   const materialsAvailability = useMemo((): BatchMaterialsAvailableBySummary | null => {
     if (!batch) return null;
     return computeBatchMaterialsAvailableBy(
-      batch.dispensingRM,
-      batch.dispensingPM,
+      smartRmItems,
+      smartPmItems,
       warehouseRowsForMaterialAvailability(inventoryRows),
       today(),
     );
-  }, [batch?.bmrNo, batch?.dispensingRM, batch?.dispensingPM, inventoryRows]);
+  }, [batch, smartRmItems, smartPmItems, inventoryRows]);
 
   const earliestMfgAfterRm = materialsAvailability?.maxRmAvailableBy
     ? earliestMfgDateAfterRmAvailable(materialsAvailability.maxRmAvailableBy)
@@ -8486,9 +8643,9 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
   const rmReserveGate = reserveGateState(detailCoverage?.rm);
   const pmReserveGate = reserveGateState(detailCoverage?.pm);
 
-  const [bomRmItems, setBomRmItems] = useState<DispensingItem[]>([]);
-  const [bomPmItems, setBomPmItems] = useState<DispensingItem[]>([]);
-  const [bomLoading, setBomLoading] = useState(false);
+  // Shared with ScheduleModal — see useBatchBomItems. Both screens must compute a batch's
+  // requirement the same way, so the BOM load lives in one place.
+  const { bomRmItems, bomPmItems, bomLoading } = useBatchBomItems(batch);
 
   const openRmMtrForBatch = useMemo(() => findOpenRmMtrForBatch(batch.bmrNo, outboundMrns), [batch.bmrNo, outboundMrns]);
   const anyRmMtrForBatch = useMemo(() => findAnyRmMtrForBatch(batch.bmrNo, outboundMrns), [batch.bmrNo, outboundMrns]);
@@ -8502,94 +8659,6 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
   const curStatus = lifecycleDisplayStage;
   const pIdx = pipelineIndex(curStatus, pipeline);
 
-  useEffect(() => {
-    if (!batch.sku && !batch.productName) return;
-    const batchPk = (batch as Batch & { _pk?: number })._pk;
-    setBomLoading(true);
-    const loadFromBatchBom = batchPk
-      ? fetchBOMByBatchId(batchPk)
-      : Promise.resolve({ success: false, data: undefined });
-    loadFromBatchBom
-      .then((batchBomRes) => {
-        // Use batch-specific BOM from planning_batches when API says so (same table as Planning BOM editor).
-        // Do not fall back to master BOM when source is planning_batch — that is the BOM for this batch.
-        const useBatchBom = batchBomRes.success && batchBomRes.data && (
-          batchBomRes.data.source === 'planning_batch' ||
-          (batchBomRes.data.rmLines?.length || batchBomRes.data.pmLines?.length)
-        );
-        if (useBatchBom && batchBomRes.data) {
-          const rmLines = (batchBomRes.data.rmLines ?? []) as BOMRmLine[];
-          const pmLines = (batchBomRes.data.pmLines ?? []) as BOMPmLine[];
-          const batchSizeKg = (batchBomRes.data.batchSizeKg != null && batchBomRes.data.batchSizeKg > 0)
-            ? batchBomRes.data.batchSizeKg
-            : (batch.batchSize || 0);
-          const batchUnits =
-            batchBomRes.data.batchSizeKg != null && Number(batchBomRes.data.batchSizeKg) > 0
-              ? Number(batchBomRes.data.batchSizeKg)
-              : batch.totalBatches
-                ? Math.ceil((batch.orderQty || 0) / batch.totalBatches)
-                : Number(batch.batchSize) || 0;
-          const rmItems: DispensingItem[] = rmLines
-            .filter((line) => line.rm_code || (line as any).code)
-            .map((line) => {
-              const code = (line.rm_code || (line as any).code) as string;
-              const pct = Number((line.pct_w_w ?? (line as any).pct ?? 0)) || 0;
-              const required = (batchSizeKg * pct) / 100;
-              return { code, inci: (line.inci_name ?? (line as any).inci_name) as string, required, dispensed: 0, done: false };
-            })
-            .filter((x) => x.required > 0);
-          const pmItems: DispensingItem[] = pmLines
-            .filter((line) => line.pm_code || (line as any).code)
-            .map((line) => {
-              const code = (line.pm_code || (line as any).code) as string;
-              const qtyPerUnit = Number((line.qty_per_unit ?? (line as any).qty ?? 1)) || 1;
-              const required = qtyPerUnit * batchUnits;
-              return { code, name: (line.description ?? code) as string, required, dispensed: 0, done: false };
-            })
-            .filter((x) => x.required > 0);
-          setBomRmItems(rmItems);
-          setBomPmItems(pmItems);
-          return;
-        }
-        return fetchPRProducts().then((res) => {
-          if (!res.success || !res.data?.length) return null;
-          const product = res.data.find((p) => ((p as unknown as { zoho_sku_code?: string }).zoho_sku_code ?? (p as unknown as { product_sku?: string }).product_sku) === batch.sku || p.product_name === batch.productName);
-          return product ? fetchBOMByProductId(product.product_id) : null;
-        });
-      })
-      .then((bomRes) => {
-        if (!bomRes) return;
-        if (!(bomRes as any).success && !(bomRes as any).data) return;
-        const bom = (bomRes as { data: BOMRecord }).data;
-        if (!bom) return;
-        const batchSizeKg = batch.batchSize || 0;
-        const rmLines = (bom.rmLines ?? []) as BOMRmLine[];
-        const rmItems: DispensingItem[] = rmLines
-          .filter((line) => line.rm_code || (line as any).code)
-          .map((line) => {
-            const code = (line.rm_code || (line as any).code) as string;
-            const pct = Number((line.pct_w_w ?? (line as any).pct ?? 0)) || 0;
-            const required = (batchSizeKg * pct) / 100;
-            return { code, inci: (line.inci_name ?? (line as any).inci_name) as string, required, dispensed: 0, done: false };
-          })
-          .filter((x) => x.required > 0);
-        const pmLines = (bom.pmLines ?? []) as BOMPmLine[];
-        const batchUnits = batch.totalBatches ? Math.ceil((batch.orderQty || 0) / batch.totalBatches) : batch.batchSize || 0;
-        const pmItems: DispensingItem[] = pmLines
-          .filter((line) => line.pm_code || (line as any).code)
-          .map((line) => {
-            const code = (line.pm_code || (line as any).code) as string;
-            const qtyPerUnit = Number((line.qty_per_unit ?? (line as any).qty ?? 1)) || 1;
-            const required = qtyPerUnit * batchUnits;
-            return { code, name: (line.description ?? code) as string, required, dispensed: 0, done: false };
-          })
-          .filter((x) => x.required > 0);
-        setBomRmItems(rmItems);
-        setBomPmItems(pmItems);
-      })
-      .catch(() => { setBomRmItems([]); setBomPmItems([]); })
-      .finally(() => setBomLoading(false));
-  }, [batch.sku, batch.productName, batch.batchSize, batch.orderQty, batch.totalBatches, (batch as Batch & { _pk?: number })._pk]);
 
   const pipelineForStrip = BATCH_LIFECYCLE_PIPELINE;
   const stripTitle = 'Batch Lifecycle';

@@ -211,6 +211,15 @@ export const SoActionModals = forwardRef<SoActionModalsHandle, SoActionModalsPro
             await Promise.resolve(onUpdateSO(editModalSO.id, payload));
             setEditModalSO(null);
             onAfterChange?.();
+          } catch (e) {
+            // Surface the backend's actual reason (e.g. a cancel blocked by a confirmed production
+            // batch) — without this, a rejected save just silently failed with no feedback and the
+            // modal stayed open looking unchanged.
+            const body = (e as { body?: { error?: string } })?.body;
+            const msg = typeof body?.error === 'string' && body.error.trim()
+              ? body.error
+              : 'Failed to save sale order changes.';
+            addToast('error', msg);
           } finally {
             setEditSaving(false);
           }

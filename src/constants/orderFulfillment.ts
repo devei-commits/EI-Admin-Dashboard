@@ -394,13 +394,15 @@ export const SALES_ORDER_STATUS_CONFIG: Record<SalesOrderStatus, {
   Cancelled: { label: 'Cancelled', icon: Ban, color: 'text-gray-500', bgColor: 'bg-gray-100', borderColor: 'border-gray-300' },
 };
 
+// Cancelled sale orders are excluded server-side (listSalesOrdersDashboard) and never returned to
+// this dashboard at all, so "Cancelled" is deliberately absent here — filtering by it would only
+// ever show an empty result.
 export const SALES_ORDER_STATUS_FILTER_OPTIONS: { key: SalesOrderStatus | 'all'; label: string }[] = [
   { key: 'all', label: 'All Statuses' },
   { key: 'Draft', label: 'Draft' },
   { key: 'Confirmed', label: 'Confirmed' },
   { key: 'Approved', label: 'Approved' },
   { key: 'Closed', label: 'Closed' },
-  { key: 'Cancelled', label: 'Cancelled' },
 ];
 
 export const BATCH_STAGE_FILTER_OPTIONS = [

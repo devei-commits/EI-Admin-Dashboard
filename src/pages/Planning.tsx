@@ -63,10 +63,16 @@ import {
   batchCoverageLabel,
   batchCoverageRowClass,
   batchCoverageTier,
+  batchCoverageDetailMap,
   isItemFullyCovered,
   itemCoverageTierFromBatches,
+  // Aliased: `Planning` (below) has its own identical local closure of the same name, scoped to
+  // its own component body — only `PlanningBatchesTab` (a separate top-level function) uses this
+  // module-level import, to key into `batchCoverageTierMap`'s result.
+  releaseBatchPickKey as libReleaseBatchPickKey,
 } from '../lib/itemsInvolvedBatchCoverage';
 import type { BatchCoverageTier } from '../lib/itemsInvolvedBatchCoverage';
+import { nearestConnectingDate } from '../lib/itemsInvolvedConnectingDate';
 import MaterialMasterTypeahead from '../components/MaterialMasterTypeahead';
 import { buildMaterialTypeaheadOptions } from '../lib/materialTypeahead';
 import type { FFStatus } from '../types/orderFulfillment';
@@ -2019,6 +2025,9 @@ function PlanningBatchTableRow({
   row,
   clientCode,
   prod,
+  coverageTier,
+  coverageDriverCode,
+  coverageItemCount,
   onOpenDetail,
   onEditBatch,
   onOpenRmPanel,
@@ -2039,6 +2048,13 @@ function PlanningBatchTableRow({
   row: PlanningBatchAllRow;
   clientCode: string;
   prod?: BatchRow;
+  /** Same red/pink/yellow/green tier as the Items Involved "Batches using <item>" modal; 'none' when
+   *  this batch has no material requirement to judge (row keeps its plain shortage/zebra tint). */
+  coverageTier: BatchCoverageTier;
+  /** Item code forcing `coverageTier`, for the badge tooltip. '' when unknown. */
+  coverageDriverCode: string;
+  /** How many of the batch's materials carry a tier — the "worst of N" in the tooltip. */
+  coverageItemCount: number;
   onOpenDetail: (row: PlanningBatchAllRow) => void;
   onEditBatch: (row: PlanningBatchAllRow) => void;
   onOpenRmPanel: (row: PlanningBatchAllRow) => void;
@@ -2145,11 +2161,15 @@ function PlanningBatchTableRow({
   const pmShort = pmStatus.label === 'SHORTAGE';
   const batchShort = rmShort || pmShort;
 
+  // Same coverage colour as the Items Involved "Batches using <item>" modal takes priority when
+  // available (it's the richer, 4-tier signal); falls back to the plain shortage tint otherwise.
+  const coverageTintClass = batchCoverageRowClass(coverageTier);
+
   return (
     <tr
       onClick={handleRowClick}
       className={`border-b border-hairline cursor-pointer transition-colors text-xs ${
-        batchShort ? 'bg-err-soft/70 hover:bg-err-soft/70' : 'hover:bg-ok-soft/80'
+        coverageTintClass || (batchShort ? 'bg-err-soft/70 hover:bg-err-soft/70' : 'hover:bg-ok-soft/80')
       }`}
     >
       <td className="px-3 py-2.5 text-ink-2 whitespace-nowrap">
@@ -2169,6 +2189,24 @@ function PlanningBatchTableRow({
           >
             {batchLabel}
           </BatchTableLinkButton>
+        )}
+        {/* Tier in words too — four tints are hard to tell apart at a glance, impossible for a
+            colour-blind reader — matching the badge shown per row in the Items Involved modal. */}
+        {coverageTier !== 'none' && (
+          <span
+            className={`ml-2 ${batchCoverageBadgeClass(coverageTier)}`}
+            /* Names the material responsible. Without it this badge is unexplainable from here: it
+               grades ALL of the batch's materials, while the Items Involved modal grades the ONE
+               you opened it for — so the same batch can read SHORT here and NEEDS PO there, and
+               nothing on either screen said why. */
+            title={
+              coverageDriverCode
+                ? `${batchCoverageLabel(coverageTier)} — worst of ${coverageItemCount} material${coverageItemCount === 1 ? '' : 's'} on this batch; ${coverageDriverCode} is the constraint`
+                : `${batchCoverageLabel(coverageTier)} — worst across this batch's materials`
+            }
+          >
+            {batchCoverageLabel(coverageTier)}
+          </span>
         )}
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap">
@@ -2664,6 +2702,17 @@ function PlanningBatchesTab({
   const batchesPageStart = (batchesSafePage - 1) * batchesPageSize;
   const paginatedRows = sortedRows.slice(batchesPageStart, batchesPageStart + batchesPageSize);
 
+  /**
+   * Same red/pink/yellow/green coverage tint the "Batches using <item>" modal shows per item,
+   * now per batch — so a batch reads the same colour whether you got here from Items Involved or
+   * straight from this tab. Computed once over the full (unfiltered) batch list so pagination /
+   * search / sort don't change a batch's colour.
+   */
+  const batchTiers = useMemo(
+    () => batchCoverageDetailMap(itemsInvolvedAll, allBatches as PlanningBatchAllRow[]),
+    [itemsInvolvedAll, allBatches],
+  );
+
   useEffect(() => {
     setBatchesPage(1);
   }, [searchTerm, batchTypeFilter, sortColumn, sortDirection, dateFilter.from, dateFilter.to]);
@@ -2744,6 +2793,9 @@ function PlanningBatchesTab({
                     row={row}
                     clientCode={clientCode}
                     prod={prod}
+                    coverageTier={batchTiers.get(libReleaseBatchPickKey(row))?.tier ?? 'none'}
+                    coverageDriverCode={batchTiers.get(libReleaseBatchPickKey(row))?.driverCode ?? ''}
+                    coverageItemCount={batchTiers.get(libReleaseBatchPickKey(row))?.itemCount ?? 0}
                     onOpenDetail={onBatchClick}
                     onEditBatch={onEditBatch}
                     onOpenRmPanel={onOpenRmPanel}
@@ -8424,6 +8476,13 @@ const Planning = () => {
                         onSort={toggleItemsInvolvedSort}
                         align="right"
                       />
+                      <th
+                        scope="col"
+                        className="px-3 py-2 text-left font-semibold text-ink-2 whitespace-nowrap"
+                        title="Soonest date any open PO brings this item in. When several POs carry it, the earliest one is shown."
+                      >
+                        Connecting Date
+                      </th>
                       <SortableTableTh
                         label="In Transit"
                         column="inTransit"
@@ -8723,6 +8782,30 @@ const Planning = () => {
                                   ))}
                                 </div>
                               )}
+                            </td>
+                            {/* Nearest connecting date — the soonest of the per-PO dates listed
+                                above, since the first delivery is what unblocks the earliest batch. */}
+                            <td className="px-2 py-2 whitespace-nowrap">
+                              {(() => {
+                                const nearest = nearestConnectingDate(item.connectingDates);
+                                if (!nearest) return <span className="text-xs text-ink-4">—</span>;
+                                return (
+                                  <div
+                                    className="text-xs text-ink"
+                                    title={
+                                      nearest.poCount > 1
+                                        ? `Earliest of ${nearest.poCount} POs — ${nearest.poNo} connects on ${fmtConnectingDate(nearest.date)}`
+                                        : `${nearest.poNo} connects on ${fmtConnectingDate(nearest.date)}`
+                                    }
+                                  >
+                                    {fmtConnectingDate(nearest.date)}
+                                    <div className="text-[10px] text-ink-3 font-normal">
+                                      {nearest.poNo}
+                                      {nearest.poCount > 1 ? ` +${nearest.poCount - 1}` : ''}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </td>
                             <td className="px-2 py-2 text-right tabular-nums whitespace-nowrap text-ink">
                               {item.inTransitBreakdown.length > 0 ? (
@@ -9211,7 +9294,13 @@ const Planning = () => {
                             {/* The tier in words — four tints in one table are hard to separate by
                                 colour alone, and impossible for a colour-blind reader. */}
                             {coverageTier !== 'none' && (
-                              <span className={`ml-2 ${batchCoverageBadgeClass(coverageTier)}`}>
+                              <span
+                                className={`ml-2 ${batchCoverageBadgeClass(coverageTier)}`}
+                                /* Says whose verdict this is. The Batches tab badges the same batch
+                                   across ALL its materials, so it can read worse than this one —
+                                   naming the item here stops the pair looking contradictory. */
+                                title={`${batchCoverageLabel(coverageTier)} — for ${usedInModalItem.code} on this batch only. The Batches tab grades the batch across every material it uses.`}
+                              >
                                 {batchCoverageLabel(coverageTier)}
                               </span>
                             )}
