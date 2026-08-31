@@ -473,6 +473,11 @@ const OutboundDashboard = ({
       uom: c.pack.unit || firstLine.unit,
       kind: 'transfer' as const,
       rack: c.pack.rack ?? undefined,
+      // Carried through so the receiving GRN can read back how many distinct batches this
+      // transfer actually shipped, instead of asking the receiver to count/re-key it.
+      vendorBatch: c.pack.vendorBatch ?? undefined,
+      mfgDate: c.pack.mfgDate ?? undefined,
+      expDate: c.pack.expDate ?? undefined,
     }));
     setTransferPickSaving(true);
     try {

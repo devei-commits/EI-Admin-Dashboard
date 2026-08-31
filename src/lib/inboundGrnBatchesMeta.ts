@@ -16,6 +16,12 @@ export type GrnBatchCoaDoc = {
 };
 
 export type GrnBatchRow = {
+  /**
+   * System-generated internal batch no. (format B126-#####, backend-allocated — see
+   * fetchNextVendorBatchNos), shown in the "#" column. Distinct from `vendorBatchNo`, which the
+   * vendor supplies and staff type in by hand; this one is never editable.
+   */
+  systemBatchNo?: string | null;
   vendorBatchNo?: string | null;
   /** yyyy-mm-dd */
   mfgDate?: string | null;
@@ -36,17 +42,18 @@ export type InboundGrnBatchesMeta = {
   rows?: GrnBatchRow[];
   confirmedAt?: string | null;
   /**
-   * The vendor did not supply batch identity for this shipment (no batch number, no MFG/EXP).
+   * The vendor did not assign a batch number for this shipment.
    *
-   * Waives only the identity fields. Pack counts are still required: Step 4 mints one packaging
-   * number per pack and the QR labels are printed per pack, so a shipment with no packs would leave
-   * nothing to label or put away.
+   * Waives only `vendorBatchNo`. MFG/EXP dates, COA, and pack counts are still captured as usual —
+   * Step 4 mints one packaging number per pack and the QR labels are printed per pack, so a
+   * shipment with no packs would leave nothing to label or put away.
    */
   vendorBatchNotApplicable?: boolean;
 };
 
 export function emptyBatchRow(): GrnBatchRow {
   return {
+    systemBatchNo: null,
     vendorBatchNo: null,
     mfgDate: null,
     expDate: null,
@@ -135,21 +142,21 @@ export function reconcileBatchRows(rows: GrnBatchRow[], count: number): GrnBatch
 }
 
 /**
- * Every batch needs an identifier and a pack count (the pack count drives step 4).
+ * Every batch needs a vendor batch no. and a pack count (the pack count drives step 4).
  *
- * When the vendor supplied no batch identity (`vendorBatchNotApplicable`), the batch number is not
- * demanded — but the pack count still is, because Step 4 mints a packaging number per pack and the
- * QR labels print per pack.
+ * When the vendor didn't assign a batch number (`vendorBatchNotApplicable`), the batch number is
+ * not demanded — but the pack count still is, because Step 4 mints a packaging number per pack
+ * and the QR labels print per pack.
  */
 export function grnBatchesValidationErrors(meta: InboundGrnBatchesMeta, expectedCount: number): string[] {
   const rows = meta.rows ?? [];
   const errors: string[] = [];
-  const identityWaived = meta.vendorBatchNotApplicable === true;
+  const vendorBatchNoWaived = meta.vendorBatchNotApplicable === true;
   if (expectedCount > 0 && rows.length !== expectedCount) {
     errors.push(`Enter details for all ${expectedCount} batches.`);
   }
   rows.forEach((r, i) => {
-    if (!identityWaived && !String(r.vendorBatchNo ?? '').trim()) {
+    if (!vendorBatchNoWaived && !String(r.vendorBatchNo ?? '').trim()) {
       errors.push(`Batch ${i + 1}: vendor batch no. is required.`);
     }
     if (!(Number(r.noOfPacks) >= 1)) errors.push(`Batch ${i + 1}: no. of packs must be at least 1.`);

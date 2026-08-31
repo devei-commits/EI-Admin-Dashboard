@@ -34,6 +34,7 @@ export interface BatchesViewBatch {
   bmrNo: string;
   bprNo: string;
   productName: string;
+  sku?: string;
   batchNo: string;
   batchIndex: number;
   totalBatches: number;
@@ -214,7 +215,9 @@ export function BatchesView<T extends BatchesViewBatch>({
           b.bmrNo.toLowerCase().includes(searchLower) ||
           b.bprNo.toLowerCase().includes(searchLower) ||
           (b.batchNo && b.batchNo.toLowerCase().includes(searchLower)) ||
-          (b.productName && b.productName.toLowerCase().includes(searchLower)),
+          (b.productName && b.productName.toLowerCase().includes(searchLower)) ||
+          (b.sku && b.sku.toLowerCase().includes(searchLower)) ||
+          (b.soNo && b.soNo.toLowerCase().includes(searchLower)),
       )
     : productFiltered;
 

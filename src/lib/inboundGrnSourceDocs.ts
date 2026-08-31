@@ -66,17 +66,18 @@ export type InboundGrnSourceDocRequirement = {
   label: string;
 };
 
+const PO_DOC_REQUIREMENTS: InboundGrnSourceDocRequirement[] = [
+  { key: 'bill', label: 'Bill' },
+  { key: 'waybill', label: 'Waybill' },
+  { key: 'lr', label: 'LR' },
+  { key: 'coa', label: 'COA' },
+];
+
 export const INBOUND_SOURCE_DOC_REQUIREMENTS: Record<InboundGrnSourceTab, InboundGrnSourceDocRequirement[]> = {
-  po: [
-    { key: 'bill', label: 'Bill' },
-    { key: 'waybill', label: 'Waybill' },
-    { key: 'lr', label: 'LR' },
-    { key: 'coa', label: 'COA' },
-  ],
-  transfer: [
-    { key: 'to_ref', label: 'TO# ref' },
-    { key: 'dispatch_labels', label: 'Dispatch label scans' },
-  ],
+  po: PO_DOC_REQUIREMENTS,
+  // Same document set as PO — a GRN by Transfer still receives against the same shared "Receipt
+  // documents" checklist step in GrnCopyReceiptModal, so its upload requirement should read the same.
+  transfer: PO_DOC_REQUIREMENTS,
   return: [
     { key: 'credit_note', label: 'Credit Note' },
     { key: 'debit_note', label: 'Debit Note' },
@@ -115,16 +116,6 @@ function legacyPoDocPresent(
   return false;
 }
 
-function legacyTransferDocPresent(
-  key: InboundGrnSourceDocKey,
-  grn: InboundGrnSourceDocCountInput,
-): boolean {
-  if (key === 'to_ref') {
-    return Boolean(String(grn.transferOrderRef ?? grn.poNo ?? '').trim());
-  }
-  return false;
-}
-
 export function countInboundSourceDocsUploaded(grn: InboundGrnSourceDocCountInput): {
   source: InboundGrnSourceTab;
   uploaded: number;
@@ -140,12 +131,8 @@ export function countInboundSourceDocsUploaded(grn: InboundGrnSourceDocCountInpu
   for (const req of requirements) {
     const entry = docs[req.key];
     const fromStore = isInboundSourceDocUploaded(entry);
-    const legacy =
-      source === 'po'
-        ? legacyPoDocPresent(req.key, grn)
-        : source === 'transfer'
-          ? legacyTransferDocPresent(req.key, grn)
-          : false;
+    // PO and transfer share the same document set now, so they share the same legacy fallback too.
+    const legacy = source === 'po' || source === 'transfer' ? legacyPoDocPresent(req.key, grn) : false;
     if (fromStore || legacy) uploaded += 1;
   }
 

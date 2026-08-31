@@ -20,6 +20,11 @@ export interface GeneratedMRNLabel {
   boxIndex: number;
   qrPayload: string;
   qrImageDataUrl: string;
+  /** Present on transfer-pick labels (not QR box labels) — the source pack's batch, so a receiving
+      GRN can read back how many distinct batches this transfer actually shipped. */
+  vendorBatch?: string | null;
+  mfgDate?: string | null;
+  expDate?: string | null;
 }
 
 /** Outbound MTR: per line item id — warehouse / MU progression */

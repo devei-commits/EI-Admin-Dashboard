@@ -67,6 +67,7 @@ import {
   type QualityOrderManagementRow,
 } from '../../lib/qualityOrderManagementTableDisplay';
 import QualityCheckModal from '../../components/quality/QualityCheckModal';
+import QcQuickDecisionModal from '../../components/quality/QcQuickDecisionModal';
 import { ModalOverlay } from '../../components/ui/ModalOverlay';
 import { procInputClass, procChipClass } from '../../components/procurement/ProcSection';
 
@@ -137,6 +138,8 @@ interface LineItem {
   item: string;
   itemCode: string;
   poQty: number;
+  /** Quantity shipped on this line's truck; undefined for direct-PO/legacy lines. */
+  shippedQty?: number;
   rcvdQty: number;
   invoiceQty: number;
   unitPrice: number;
@@ -172,6 +175,8 @@ interface GRNRecord {
   invoiceAmount?: number;
   grnDate?: string;
   createdAt?: string | null;
+  /** GRN-level shipped total (shipment batch); fallback for legacy lines lacking per-line shippedQty. */
+  shippedQty?: number | null;
   lineItems?: LineItem[];
   workflowSteps?: WorkflowStep[];
   noOfBoxes?: number | null;
@@ -233,12 +238,14 @@ function grnRecordToQualityInput(grn: GRNRecord, lineItem: LineItem | null): Qua
     locationZone: grn.locationZone,
     workflowSteps: grn.workflowSteps,
     generatedLabels: grn.generatedLabels,
+    shippedQty: grn.shippedQty,
     lineItems: lineItem
       ? [
           {
             item: lineItem.item,
             itemCode: lineItem.itemCode,
             poQty: lineItem.poQty,
+            shippedQty: lineItem.shippedQty,
             rcvdQty: lineItem.rcvdQty,
             diff: lineItem.diff,
             unit: lineItem.unit,
@@ -258,6 +265,7 @@ function openInboundRowAction(
   onConfirmArrival?: (grn: GRNRecord) => void,
   onSendToQc?: (grn: GRNRecord) => void,
   onOpenQcCheck?: (grn: GRNRecord, lineItem: LineItem | null) => void,
+  onOpenQcDecision?: (grn: GRNRecord, lineItem: LineItem | null) => void,
 ): void {
   if (actionLabel === 'Send to QC' && onSendToQc) {
     onSendToQc(grn);
@@ -267,7 +275,8 @@ function openInboundRowAction(
     onOpenQcCheck(grn, lineItem);
     return;
   }
-  if (actionLabel === 'Awaiting QC') {
+  if (actionLabel === 'Awaiting QC' && onOpenQcDecision) {
+    onOpenQcDecision(grn, lineItem);
     return;
   }
   if (actionLabel === 'Assign Rack') {
@@ -2025,6 +2034,7 @@ function mapApiToGRNRecord(r: {
   invoiceAmount?: number | null;
   grnDate?: string | null;
   createdAt?: string | null;
+  shippedQty?: number | null;
   noOfBoxes?: number | null;
   unitsPerBox?: number | null;
   lastBoxUnits?: number | null;
@@ -2055,6 +2065,7 @@ function mapApiToGRNRecord(r: {
     qcBy: r.qcBy ?? '',
     qcSpecs: r.qcSpecs ?? null,
     status: r.status as GRNStatus,
+    shippedQty: r.shippedQty ?? null,
     lineItems: r.lineItems,
     workflowSteps: r.workflowSteps,
     invoiceNo: r.invoiceNo ?? undefined,
@@ -2099,6 +2110,7 @@ const WarehouseInbound = () => {
   const [selectedGRNMode, setSelectedGRNMode] = useState<'detail' | 'assign-rack'>('detail');
   const [assignRackFocusLineItem, setAssignRackFocusLineItem] = useState<LineItem | null>(null);
   const [activeQcRow, setActiveQcRow] = useState<QualityOrderManagementRow | null>(null);
+  const [activeQcDecisionRow, setActiveQcDecisionRow] = useState<QualityOrderManagementRow | null>(null);
   const [receiptModal, setReceiptModal] = useState<InboundReceiptModalState>(null);
   const [assignedTo, setAssignedTo] = useState<string>('');
   const [grnDate, setGrnDate] = useState<string>('');
@@ -2255,6 +2267,12 @@ const WarehouseInbound = () => {
 
   const handleOpenQcCheck = (grn: GRNRecord, lineItem: LineItem | null): void => {
     setActiveQcRow(
+      buildQualityOrderManagementRowForGrnLine(grnRecordToQualityInput(grn, lineItem), null),
+    );
+  };
+
+  const handleOpenQcDecision = (grn: GRNRecord, lineItem: LineItem | null): void => {
+    setActiveQcDecisionRow(
       buildQualityOrderManagementRowForGrnLine(grnRecordToQualityInput(grn, lineItem), null),
     );
   };
@@ -2739,9 +2757,9 @@ const WarehouseInbound = () => {
                         ) : null}
                       </td>
                       <td className="px-4 py-4 whitespace-nowrap">
-                        {/* View is available at EVERY status. Statuses like "Awaiting QC" have no
-                            actionable step here, which left no way to look back at what had been
-                            submitted — receipt, documents, batches, packs and put-away. */}
+                        {/* View is available at EVERY status, so what was submitted — receipt,
+                            documents, batches, packs and put-away — stays reachable even once the
+                            row's own action (e.g. Awaiting QC) has moved past those steps. */}
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); handleOpenGrnDetail(grn, lineItem, 'detail'); }}
@@ -2750,37 +2768,31 @@ const WarehouseInbound = () => {
                         >
                           View
                         </button>
-                        {view.actionLabel === 'Awaiting QC' ? (
-                          <span className="text-xs font-semibold text-ink-3">
-                            {view.actionPrefix ? `${view.actionPrefix} ` : ''}
-                            {view.actionLabel}
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openInboundRowAction(
-                                grn,
-                                lineItem,
-                                view.actionLabel,
-                                setReceiptModal,
-                                handleOpenGrnDetail,
-                                (row) => {
-                                  void handleConfirmArrival(row);
-                                },
-                                (row) => {
-                                  void handleSendToQc(row);
-                                },
-                                handleOpenQcCheck,
-                              );
-                            }}
-                            className="text-xs font-semibold text-ink hover:text-ink hover:underline"
-                          >
-                            {view.actionPrefix ? `${view.actionPrefix} ` : ''}
-                            {view.actionLabel}
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openInboundRowAction(
+                              grn,
+                              lineItem,
+                              view.actionLabel,
+                              setReceiptModal,
+                              handleOpenGrnDetail,
+                              (row) => {
+                                void handleConfirmArrival(row);
+                              },
+                              (row) => {
+                                void handleSendToQc(row);
+                              },
+                              handleOpenQcCheck,
+                              handleOpenQcDecision,
+                            );
+                          }}
+                          className="text-xs font-semibold text-ink hover:text-ink hover:underline"
+                        >
+                          {view.actionPrefix ? `${view.actionPrefix} ` : ''}
+                          {view.actionLabel}
+                        </button>
                       </td>
                     </tr>
                     );
@@ -2864,7 +2876,7 @@ const WarehouseInbound = () => {
         ) : null}
 
         {/* GRN Detail Modal */}
-        {selectedGRN && !receiptModal && !activeQcRow ? (
+        {selectedGRN && !receiptModal && !activeQcRow && !activeQcDecisionRow ? (
           <GRNDetailModal
             grn={selectedGRN}
             mode={selectedGRNMode}
@@ -2882,6 +2894,14 @@ const WarehouseInbound = () => {
             readOnly
             onClose={() => setActiveQcRow(null)}
             onSaved={handleQcCheckSaved}
+          />
+        ) : null}
+
+        {activeQcDecisionRow ? (
+          <QcQuickDecisionModal
+            row={activeQcDecisionRow}
+            onClose={() => setActiveQcDecisionRow(null)}
+            onSaved={() => void reloadGrnList()}
           />
         ) : null}
       </div>

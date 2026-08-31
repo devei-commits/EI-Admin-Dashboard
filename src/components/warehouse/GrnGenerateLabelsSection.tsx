@@ -4,12 +4,13 @@
  * and pack quantity. Labels are rendered client-side (qrcode.react) and printed via a popup.
  */
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { Printer } from 'lucide-react';
 import type { GrnBatchRow } from '../../lib/inboundGrnBatchesMeta';
 import type { GrnPackagingRow } from '../../lib/inboundGrnPackagingMeta';
-import { packLabelFields, printPackLabels } from '../../lib/grnPackLabelPrint';
+import type { GeneratedPackLabel } from '../../services/grn.service';
+import { buildGeneratedPackLabels, packLabelFields, printStoredPackLabels } from '../../lib/grnPackLabelPrint';
 
 export interface GrnGenerateLabelsSectionProps {
   rows: GrnPackagingRow[];
@@ -19,9 +20,15 @@ export interface GrnGenerateLabelsSectionProps {
   vendor: string;
   unit?: string;
   disabled?: boolean;
+  /**
+   * Persist the just-built label snapshot (POST /:id/pack-labels) before printing, so every later
+   * reprint ("Print pack labels") matches exactly what's about to be printed here.
+   */
+  onGenerate: (labels: GeneratedPackLabel[]) => Promise<void>;
   /** Called after a successful print, so the caller can mark packs as labelled. */
   onPrinted?: () => void;
   onPrintBlocked?: () => void;
+  onGenerateFailed?: () => void;
 }
 
 export const GrnGenerateLabelsSection: React.FC<GrnGenerateLabelsSectionProps> = ({
@@ -32,21 +39,34 @@ export const GrnGenerateLabelsSection: React.FC<GrnGenerateLabelsSectionProps> =
   vendor,
   unit,
   disabled = false,
+  onGenerate,
   onPrinted,
   onPrintBlocked,
+  onGenerateFailed,
 }) => {
   const gridRef = useRef<HTMLDivElement>(null);
+  const [printing, setPrinting] = useState(false);
   const ctx = { batches, productName, productCode, vendor, unit };
   const fieldsFor = (row: GrnPackagingRow) => packLabelFields(row, ctx);
 
-  const handlePrint = (): void => {
-    if (!rows.length) return;
+  const handlePrint = async (): Promise<void> => {
+    if (!rows.length || printing) return;
     // Read the rendered QR canvases (same order as rows) into data URLs for the print doc.
     const canvases = gridRef.current
       ? Array.from(gridRef.current.querySelectorAll<HTMLCanvasElement>('canvas'))
       : [];
     const qrDataUrls = rows.map((_, i) => canvases[i]?.toDataURL('image/png') ?? '');
-    if (!printPackLabels(rows, qrDataUrls, ctx)) {
+    const labels = buildGeneratedPackLabels(rows, qrDataUrls, ctx);
+    setPrinting(true);
+    try {
+      await onGenerate(labels);
+    } catch {
+      onGenerateFailed?.();
+      return;
+    } finally {
+      setPrinting(false);
+    }
+    if (!printStoredPackLabels(labels)) {
       onPrintBlocked?.();
       return;
     }
@@ -65,11 +85,12 @@ export const GrnGenerateLabelsSection: React.FC<GrnGenerateLabelsSectionProps> =
         </div>
         <button
           type="button"
-          onClick={handlePrint}
-          disabled={disabled || rows.length === 0}
+          onClick={() => void handlePrint()}
+          disabled={disabled || printing || rows.length === 0}
           className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-white hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <Printer className="h-4 w-4" aria-hidden /> Print all {rows.length} label{rows.length === 1 ? '' : 's'}
+          <Printer className="h-4 w-4" aria-hidden />
+          {printing ? 'Saving labels…' : `Print all ${rows.length} label${rows.length === 1 ? '' : 's'}`}
         </button>
       </div>
 

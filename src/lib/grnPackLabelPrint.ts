@@ -1,17 +1,18 @@
 /**
  * Pack-level GRN label printing — one label per physical pack from the Packaging List (QR encodes
- * the packaging number). Shared by the Generate Labels step (GrnGenerateLabelsSection, only mounted
- * while on step 5) and the always-available "Print pack labels" button in GrnCopyReceiptModal's
- * header, so a lost/damaged label can be reprinted at any step without regenerating anything.
+ * the packaging number). Used by the Generate Labels step (GrnGenerateLabelsSection, step 5) and
+ * the always-available "Print pack labels" button in GrnCopyReceiptModal's header.
  *
- * QR images are rendered client-side (qrcode.react) — there is no persisted image to reprint from,
- * so every caller renders the same canvases from the same packaging + batch data and reads them
- * into data URLs at print time. Rows/batches are stable (loaded from the GRN), so the QR + fields
- * printed today are identical to what was printed the first time.
+ * Generate Labels renders QR canvases client-side (qrcode.react), builds the label snapshot via
+ * `buildGeneratedPackLabels`, and persists it (POST /:id/pack-labels) before printing. Every later
+ * reprint — including "Print pack labels" from any step — prints that persisted snapshot via
+ * `printStoredPackLabels`, never recomputing from the (possibly since-edited) live batches/packaging
+ * data, so a lost/damaged label always reprints identical to what's physically on the pack.
  */
 
 import type { GrnBatchRow } from './inboundGrnBatchesMeta';
 import type { GrnPackagingRow } from './inboundGrnPackagingMeta';
+import type { GeneratedPackLabel, PackLabelField } from '../services/grn.service';
 
 /** yyyy-mm-dd → "MAY/2026". Falls back to the raw value when unparseable. */
 export function formatMonYear(date: string | null | undefined): string {
@@ -42,10 +43,7 @@ export interface PackLabelContext {
 }
 
 /** The field rows shown on one pack label, in print order. */
-export function packLabelFields(
-  row: GrnPackagingRow,
-  ctx: PackLabelContext,
-): Array<{ label: string; value: string }> {
+export function packLabelFields(row: GrnPackagingRow, ctx: PackLabelContext): PackLabelField[] {
   const batch = ctx.batches[row.batchIndex];
   return [
     { label: 'Product', value: ctx.productName || '—' },
@@ -58,34 +56,41 @@ export function packLabelFields(
   ];
 }
 
-function packLabelCardHtml(row: GrnPackagingRow, qrDataUrl: string, ctx: PackLabelContext): string {
-  const fieldRows = packLabelFields(row, ctx)
+/**
+ * Freeze the current rows/QR-canvases/context into the persistable shape (POST /:id/pack-labels).
+ * `qrDataUrls` must be the same length/order as `rows` (one rendered QR canvas per row).
+ */
+export function buildGeneratedPackLabels(
+  rows: GrnPackagingRow[],
+  qrDataUrls: string[],
+  ctx: PackLabelContext,
+): GeneratedPackLabel[] {
+  return rows.map((row, i) => ({
+    packagingNo: row.packagingNo,
+    qrPayload: row.packagingNo,
+    qrImageDataUrl: qrDataUrls[i] ?? '',
+    fields: packLabelFields(row, ctx),
+  }));
+}
+
+function packLabelCardHtml(packagingNo: string, qrDataUrl: string, fields: PackLabelField[]): string {
+  const fieldRows = fields
     .map((f) => `<div class="row"><span class="k">${esc(f.label)}</span><span class="v">${esc(f.value)}</span></div>`)
     .join('');
   return `
     <article class="label">
-      <div class="pkg">📦 ${esc(row.packagingNo)}</div>
+      <div class="pkg">📦 ${esc(packagingNo)}</div>
       <div class="qrwrap">${qrDataUrl ? `<img src="${esc(qrDataUrl)}" alt="QR" />` : ''}</div>
       <div class="rows">${fieldRows}</div>
-      <div class="pkgfoot">${esc(row.packagingNo)}</div>
+      <div class="pkgfoot">${esc(packagingNo)}</div>
     </article>`;
 }
 
-/**
- * Open a print window for one or more pack labels and trigger the browser print dialog.
- * `qrDataUrls` must be the same length/order as `rows` (one rendered QR canvas per row).
- * Returns false if the popup was blocked, so the caller can surface a toast.
- */
-export function printPackLabels(
-  rows: GrnPackagingRow[],
-  qrDataUrls: string[],
-  ctx: PackLabelContext,
-): boolean {
-  if (!rows.length) return true;
+/** Open a print window for the given pre-built label cards. Returns false if the popup was blocked. */
+function openPackLabelsPrintWindow(cards: string): boolean {
+  if (!cards) return true;
   const win = window.open('', '_blank', 'width=900,height=760');
   if (!win) return false;
-
-  const cards = rows.map((row, i) => packLabelCardHtml(row, qrDataUrls[i] ?? '', ctx)).join('');
 
   win.document.write(`<!doctype html>
 <html>
@@ -115,4 +120,25 @@ export function printPackLabels(
 </html>`);
   win.document.close();
   return true;
+}
+
+/**
+ * Print pack labels freshly rendered from live rows/QR-canvases/context — used only by the
+ * Generate Labels step, right before persisting that same snapshot via buildGeneratedPackLabels.
+ * `qrDataUrls` must be the same length/order as `rows` (one rendered QR canvas per row).
+ */
+export function printPackLabels(rows: GrnPackagingRow[], qrDataUrls: string[], ctx: PackLabelContext): boolean {
+  if (!rows.length) return true;
+  const cards = rows.map((row, i) => packLabelCardHtml(row.packagingNo, qrDataUrls[i] ?? '', packLabelFields(row, ctx))).join('');
+  return openPackLabelsPrintWindow(cards);
+}
+
+/**
+ * Reprint the exact labels persisted at generation time (grn.generatedPackLabels) — no live
+ * batches/packaging/QR-canvas recomputation, so this always matches what's physically on the packs.
+ */
+export function printStoredPackLabels(labels: GeneratedPackLabel[]): boolean {
+  if (!labels.length) return true;
+  const cards = labels.map((l) => packLabelCardHtml(l.packagingNo, l.qrImageDataUrl, l.fields)).join('');
+  return openPackLabelsPrintWindow(cards);
 }

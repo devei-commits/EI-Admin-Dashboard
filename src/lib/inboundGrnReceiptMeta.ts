@@ -85,8 +85,16 @@ export function readGrnReceiptMeta(
   };
 }
 
-/** Fields the reference marks with * — used to gate the step's Confirm Receipt action. */
-export function grnReceiptValidationErrors(meta: InboundGrnReceiptMeta): string[] {
+/**
+ * Fields the reference marks with * — used to gate the step's Confirm Receipt action.
+ *
+ * `skipChecklist` drops the document-checklist requirement for GRN by Transfer, which has no
+ * vendor paperwork (Invoice/E-Way Bill/COA/MSDS) to tick in the first place.
+ */
+export function grnReceiptValidationErrors(
+  meta: InboundGrnReceiptMeta,
+  opts?: { skipChecklist?: boolean },
+): string[] {
   const errors: string[] = [];
   if (meta.assignmentType === 'specific' && !String(meta.assignedTo ?? '').trim()) {
     errors.push('Choose the person to assign this GRN to.');
@@ -94,8 +102,10 @@ export function grnReceiptValidationErrors(meta: InboundGrnReceiptMeta): string[
   if (!String(meta.receiptDate ?? '').trim()) errors.push('Receipt date is required.');
   if (!String(meta.receiptTime ?? '').trim()) errors.push('Receipt time is required.');
   if (!String(meta.vehicleNumber ?? '').trim()) errors.push('Vehicle number is required.');
-  const anyChecklist = Object.values(meta.checklist ?? {}).some(Boolean);
-  if (!anyChecklist) errors.push('Tick the documents received in the checklist.');
+  if (!opts?.skipChecklist) {
+    const anyChecklist = Object.values(meta.checklist ?? {}).some(Boolean);
+    if (!anyChecklist) errors.push('Tick the documents received in the checklist.');
+  }
   if ((meta.vehiclePhotos?.length ?? 0) < GRN_RECEIPT_MIN_VEHICLE_PHOTOS) {
     errors.push(
       `Add at least ${GRN_RECEIPT_MIN_VEHICLE_PHOTOS} vehicle photo${GRN_RECEIPT_MIN_VEHICLE_PHOTOS === 1 ? '' : 's'}.`

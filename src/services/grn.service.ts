@@ -54,6 +54,12 @@ export interface GRNRecordFromApi {
   expiry?: string | null;
   mfgBatch?: string | null;
   generatedLabels?: GeneratedLabel[] | null;
+  /**
+   * Pack labels (one per Packaging List row) as actually printed at "Generate Labels" (step 5) —
+   * frozen at generation time so a later reprint ("Print pack labels") always matches what's
+   * physically on the packs, even if batches/packaging are edited afterward.
+   */
+  generatedPackLabels?: GeneratedPackLabel[] | null;
   /** po | transfer | return */
   receiptSource?: string | null;
   purchaseOrderId?: number | null;
@@ -87,6 +93,28 @@ export async function generateGRNLabels(
 ): Promise<{ labels: GeneratedLabel[]; workflowSteps?: string[] }> {
   const res = await api.post<{ labels: GeneratedLabel[]; workflowSteps?: string[] }>(`/api/v1/grn/${id}/generate-labels`, payload ?? {});
   return res;
+}
+
+export interface PackLabelField {
+  label: string;
+  value: string;
+}
+
+export interface GeneratedPackLabel {
+  packagingNo: string;
+  qrPayload: string;
+  qrImageDataUrl: string;
+  fields: PackLabelField[];
+}
+
+/**
+ * Persist the pack labels just rendered/printed at step 5, so "Print pack labels" (available from
+ * any later step) always reprints this exact snapshot instead of recomputing from
+ * batches/packaging, which could have since been edited.
+ */
+export async function saveGRNPackLabels(id: string, packLabels: GeneratedPackLabel[]): Promise<GeneratedPackLabel[]> {
+  const res = await api.post<{ packLabels: GeneratedPackLabel[] }>(`/api/v1/grn/${id}/pack-labels`, { packLabels });
+  return res.packLabels;
 }
 
 /** Resolved line display name (master name preferred over code). */
@@ -149,6 +177,17 @@ export interface GrnQcReferenceResponse {
 /** Master quality specs merged with saved GRN QC results. */
 export async function fetchGRNQcReference(id: string): Promise<GrnQcReferenceResponse> {
   return api.get<GrnQcReferenceResponse>(`/api/v1/grn/${id}/qc-reference`);
+}
+
+/**
+ * Allocate `count` system-generated vendor batch numbers (format B126-#####), each guaranteed
+ * unique across every GRN batch ever created (backend atomic counter — see
+ * allocateNextVendorBatchNos in src/grn/controller.js of the backend repo).
+ */
+export async function fetchNextVendorBatchNos(count: number): Promise<string[]> {
+  const n = Math.max(1, Math.floor(count) || 1);
+  const res = await api.get<{ codes: string[] }>(`/api/v1/grn/next-vendor-batch-no?count=${n}`);
+  return Array.isArray(res?.codes) ? res.codes : [];
 }
 
 export interface CreateGRNPayload {

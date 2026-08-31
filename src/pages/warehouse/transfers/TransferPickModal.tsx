@@ -37,6 +37,10 @@ export interface TransferLabel {
   trNo?: string;
   route?: string;
   rack?: string;
+  /** Source pack's batch, carried through so the receiving GRN can auto-fill batch count/details. */
+  vendorBatch?: string | null;
+  mfgDate?: string | null;
+  expDate?: string | null;
 }
 
 interface PackRow {

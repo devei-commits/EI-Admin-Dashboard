@@ -20,7 +20,7 @@ export interface GrnBatchDetailsSectionProps {
   rows: GrnBatchRow[];
   onChangeRow: (index: number, patch: Partial<GrnBatchRow>) => void;
   disabled?: boolean;
-  /** Vendor supplied no batch identity — batch no. / MFG / EXP / COA are not asked for. */
+  /** Vendor didn't assign a batch number — only the Vendor Batch No. field is disabled/skipped. */
   vendorBatchNotApplicable?: boolean;
   onChangeVendorBatchNotApplicable?: (next: boolean) => void;
 }
@@ -109,9 +109,11 @@ export const GrnBatchDetailsSection: React.FC<GrnBatchDetailsSectionProps> = ({
   vendorBatchNotApplicable = false,
   onChangeVendorBatchNotApplicable,
 }) => {
-  // Identity is what the vendor may not provide. Pack counts are ours and still required: Step 4
-  // mints a packaging number per pack and QR labels print per pack.
-  const identityDisabled = disabled || vendorBatchNotApplicable;
+  // Only the vendor batch no. itself is waived when the vendor didn't supply one — MFG/EXP dates
+  // and COA can still be on the packaging/paperwork even without a batch number, so those stay
+  // editable. Pack counts are ours and always required: Step 4 mints a packaging number per pack
+  // and QR labels print per pack.
+  const vendorBatchNoDisabled = disabled || vendorBatchNotApplicable;
   return (
     <section className="rounded-xl border border-border p-4">
       <div className="mb-3">
@@ -130,11 +132,10 @@ export const GrnBatchDetailsSection: React.FC<GrnBatchDetailsSectionProps> = ({
               className="mt-0.5"
             />
             <span>
-              <span className="font-semibold">Vendor batch details not applicable</span> — this shipment came
-              without a batch number, MFG or EXP date.
+              <span className="font-semibold">Vendor batch no. not applicable</span> — this shipment came
+              without a vendor-assigned batch number.
               <span className="block text-ink-3">
-                Those columns are skipped. No. of packs is still needed: each pack gets its own packaging
-                number and QR label.
+                Only that field is skipped. MFG/EXP dates, COA, and no. of packs are still captured as usual.
               </span>
             </span>
           </label>
@@ -162,12 +163,14 @@ export const GrnBatchDetailsSection: React.FC<GrnBatchDetailsSectionProps> = ({
             <tbody className="divide-y divide-hairline">
               {rows.map((row, i) => (
                 <tr key={i} className="align-top">
-                  <td className="px-3 py-2 font-medium text-ink-2 whitespace-nowrap">Batch {i + 1}</td>
+                  <td className="px-3 py-2 font-medium text-ink-2 whitespace-nowrap">
+                    {row.systemBatchNo || `Batch ${i + 1}`}
+                  </td>
                   <td className="px-3 py-2 min-w-[150px]">
                     <input
                       type="text"
                       value={vendorBatchNotApplicable ? '' : (row.vendorBatchNo ?? '')}
-                      disabled={identityDisabled}
+                      disabled={vendorBatchNoDisabled}
                       onChange={(e) => onChangeRow(i, { vendorBatchNo: e.target.value || null })}
                       placeholder={vendorBatchNotApplicable ? 'Not applicable' : 'VB-2026-01000'}
                       aria-label={`Batch ${i + 1} vendor batch no.`}
@@ -177,8 +180,8 @@ export const GrnBatchDetailsSection: React.FC<GrnBatchDetailsSectionProps> = ({
                   <td className="px-3 py-2 min-w-[140px]">
                     <input
                       type="date"
-                      value={vendorBatchNotApplicable ? '' : (row.mfgDate ?? '')}
-                      disabled={identityDisabled}
+                      value={row.mfgDate ?? ''}
+                      disabled={disabled}
                       onChange={(e) => onChangeRow(i, { mfgDate: e.target.value || null })}
                       aria-label={`Batch ${i + 1} MFG date`}
                       className={cellInput}
@@ -187,8 +190,8 @@ export const GrnBatchDetailsSection: React.FC<GrnBatchDetailsSectionProps> = ({
                   <td className="px-3 py-2 min-w-[140px]">
                     <input
                       type="date"
-                      value={vendorBatchNotApplicable ? '' : (row.expDate ?? '')}
-                      disabled={identityDisabled}
+                      value={row.expDate ?? ''}
+                      disabled={disabled}
                       onChange={(e) => onChangeRow(i, { expDate: e.target.value || null })}
                       aria-label={`Batch ${i + 1} EXP date`}
                       className={cellInput}
@@ -218,16 +221,12 @@ export const GrnBatchDetailsSection: React.FC<GrnBatchDetailsSectionProps> = ({
                     />
                   </td>
                   <td className="px-3 py-2">
-                    {vendorBatchNotApplicable ? (
-                      <span className="text-xs text-ink-4">Not applicable</span>
-                    ) : (
-                      <CoaCell
-                        row={row}
-                        batchNo={i + 1}
-                        disabled={disabled}
-                        onChange={(patch) => onChangeRow(i, patch)}
-                      />
-                    )}
+                    <CoaCell
+                      row={row}
+                      batchNo={i + 1}
+                      disabled={disabled}
+                      onChange={(patch) => onChangeRow(i, patch)}
+                    />
                   </td>
                 </tr>
               ))}

@@ -29,6 +29,8 @@ export interface GrnConfirmReceiptSectionProps {
   onChange: (patch: Partial<InboundGrnReceiptMeta>) => void;
   assignableUsers: AssignableUser[];
   disabled?: boolean;
+  /** GRN by Transfer has no vendor paperwork (Invoice/E-Way Bill/COA/MSDS) to tick. */
+  hideChecklist?: boolean;
 }
 
 export const GrnConfirmReceiptSection: React.FC<GrnConfirmReceiptSectionProps> = ({
@@ -36,6 +38,7 @@ export const GrnConfirmReceiptSection: React.FC<GrnConfirmReceiptSectionProps> =
   onChange,
   assignableUsers,
   disabled = false,
+  hideChecklist = false,
 }) => {
   const vehiclePhotoRef = useRef<HTMLInputElement>(null);
   const docPhotoRef = useRef<HTMLInputElement>(null);
@@ -273,27 +276,29 @@ export const GrnConfirmReceiptSection: React.FC<GrnConfirmReceiptSectionProps> =
         </div>
       </div>
 
-      {/* Document checklist */}
-      <div className="mb-4">
-        <span className={labelClass}>Document Checklist *</span>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {GRN_RECEIPT_CHECKLIST_ITEMS.map((item) => (
-            <label
-              key={item.key}
-              className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-ink-2 hover:bg-surface-2"
-            >
-              <input
-                type="checkbox"
-                checked={!!(value.checklist ?? {})[item.key]}
-                disabled={disabled}
-                onChange={() => toggleChecklist(item.key)}
-                className="h-4 w-4 rounded border-border"
-              />
-              {item.label}
-            </label>
-          ))}
+      {/* Document checklist — vendor paperwork, so it doesn't apply to an internal transfer */}
+      {!hideChecklist ? (
+        <div className="mb-4">
+          <span className={labelClass}>Document Checklist *</span>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {GRN_RECEIPT_CHECKLIST_ITEMS.map((item) => (
+              <label
+                key={item.key}
+                className="flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-ink-2 hover:bg-surface-2"
+              >
+                <input
+                  type="checkbox"
+                  checked={!!(value.checklist ?? {})[item.key]}
+                  disabled={disabled}
+                  onChange={() => toggleChecklist(item.key)}
+                  className="h-4 w-4 rounded border-border"
+                />
+                {item.label}
+              </label>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {/* Photos — compressed and stored inline for reference */}
       <div className="mb-4 grid gap-3 sm:grid-cols-2">

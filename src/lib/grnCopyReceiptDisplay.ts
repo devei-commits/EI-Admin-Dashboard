@@ -1,6 +1,7 @@
 import type { InboundGrnSourceDocuments } from './inboundGrnSourceDocs';
 import { formatInboundTableDate, resolveInboundWarehouseCode } from './inboundGrnTableDisplay';
 import type { GrnReceiptChecklistKey } from './inboundGrnReceiptMeta';
+import { resolveGrnReceiptSource } from './inboundGrnSourceFilter';
 
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 
@@ -8,6 +9,7 @@ export type GrnCopyReceiptLineInput = {
   item?: string;
   itemCode?: string;
   poQty?: number;
+  shippedQty?: number;
   rcvdQty?: number;
   invoiceQty?: number;
   unitPrice?: number;
@@ -29,6 +31,8 @@ export type GrnCopyReceiptInput = {
   locationZone?: string | null;
   sourceDocuments?: InboundGrnSourceDocuments | null;
   lineItem?: GrnCopyReceiptLineInput | null;
+  receiptSource?: string | null;
+  mrnId?: number | string | null;
 };
 
 export type GrnPackCheckRow = {
@@ -329,9 +333,13 @@ export function buildGrnCopyReceiptHeaderFields(grn: GrnCopyReceiptInput): GrnCo
     itemLine: itemCode ? `${itemCode} · ${itemName}` : itemName || '—',
     poNumber: String(grn.poNo ?? '').trim() || '—',
     poQty: formatQty(line?.poQty, line?.unit),
-    // Shipped/received qty falls back to PO qty when no shipment qty was recorded (0),
-    // matching the pack declared qty so the auto match-check doesn't false-flag.
-    shippedQty: formatQty(Number(line?.rcvdQty) || Number(line?.poQty) || 0, line?.unit),
+    // Prefer the actual qty put on this shipment/truck (partial shipments != full PO qty).
+    // Once physically received, rcvdQty is the more current count. Only fall back to the PO
+    // qty for legacy GRNs that predate the per-line shippedQty field.
+    shippedQty: formatQty(
+      Number(line?.rcvdQty) || Number(line?.shippedQty) || Number(line?.poQty) || 0,
+      line?.unit,
+    ),
     unitPrice: Number(line?.unitPrice) > 0
       ? `${formatInr(line?.unitPrice)} / ${String(line?.unit ?? 'unit').trim() || 'unit'}`
       : '—',
@@ -350,9 +358,9 @@ export function buildGrnMatchChecks(input: {
 }): GrnMatchCheckRow[] {
   const line = input.grn.lineItem;
   const poQty = Number(line?.poQty) || 0;
-  // Fall back to PO qty when no shipment qty was recorded (0), matching the header and packs
-  // so the "Shipped vs Physical" check doesn't false-flag on a missing shipment step.
-  const shippedQty = Number(line?.rcvdQty) || poQty;
+  // Prefer the actual qty put on this shipment/truck, then the physically counted qty once
+  // recorded, then PO qty only as a last resort for legacy GRNs predating shippedQty.
+  const shippedQty = Number(line?.rcvdQty) || Number(line?.shippedQty) || poQty;
   const billedQty =
     Number(input.billedQty) > 0
       ? Number(input.billedQty)
@@ -369,8 +377,10 @@ export function buildGrnMatchChecks(input: {
   // Only demand the docs this GRN's own dock checklist asked for (falls back to the original
   // Invoice/EWB/COA three for legacy GRNs with no checklist) — not every possible document.
   // Checking Invoice/EWB/COA unconditionally left this row permanently unpassable whenever the
-  // checklist said e.g. no E-Way Bill came with the shipment.
-  const requiredDocs = requiredGrnDocKeys(input.grn.sourceDocuments);
+  // checklist said e.g. no E-Way Bill came with the shipment. GRN by Transfer has no vendor
+  // paperwork at all, so it asks for none regardless of checklist state.
+  const isTransferGrn = resolveGrnReceiptSource(input.grn) === 'transfer';
+  const requiredDocs = requiredGrnDocKeys(input.grn.sourceDocuments, { skipChecklistDocs: isTransferGrn });
   const docsComplete = requiredDocs.every((key) => docUploaded(input.grn.sourceDocuments, key));
   const requiredDocsLabel = requiredDocs.map((key) => GRN_REQUIRED_DOC_LABELS[key]).join(' + ') || 'none required';
   const labelCount = Math.max(0, Number(input.existingLabelCount) || 0);
@@ -535,7 +545,10 @@ export function docKeysForChecklist(
 
 export function requiredGrnDocKeys(
   sourceDocuments: GrnCopyReceiptInput['sourceDocuments'],
+  opts?: { skipChecklistDocs?: boolean },
 ): GrnRequiredDocKey[] {
+  // GRN by Transfer has no vendor paperwork — nothing is ever required, checklist or not.
+  if (opts?.skipChecklistDocs) return [];
   const checklist = (sourceDocuments ?? {}).receipt?.checklist;
   const hasChecklist = checklist != null && Object.values(checklist).some(Boolean);
   // A GRN with no checklist keeps the ORIGINAL three-document gate. Falling back to all six would
@@ -564,16 +577,18 @@ export function docFileNameFor(
  */
 export function missingRequiredGrnDocs(
   sourceDocuments: GrnCopyReceiptInput['sourceDocuments'],
+  opts?: { skipChecklistDocs?: boolean },
 ): GrnRequiredDocKey[] {
   const docs = sourceDocuments ?? {};
-  return requiredGrnDocKeys(sourceDocuments).filter((key) => !docUploaded(docs, key));
+  return requiredGrnDocKeys(sourceDocuments, opts).filter((key) => !docUploaded(docs, key));
 }
 
 /** One sentence naming what is still missing, or null when nothing is. */
 export function requiredGrnDocsError(
   sourceDocuments: GrnCopyReceiptInput['sourceDocuments'],
+  opts?: { skipChecklistDocs?: boolean },
 ): string | null {
-  const missing = missingRequiredGrnDocs(sourceDocuments);
+  const missing = missingRequiredGrnDocs(sourceDocuments, opts);
   if (missing.length === 0) return null;
   const names = missing.map((k) => GRN_REQUIRED_DOC_LABELS[k]);
   const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;

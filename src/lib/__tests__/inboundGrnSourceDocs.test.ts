@@ -10,8 +10,30 @@ describe('inboundGrnSourceDocs', () => {
     expect(inboundSourceDocRequirementLabel('po')).toBe('Bill + Waybill + LR + COA');
   });
 
-  it('describes transfer requirements', () => {
-    expect(inboundSourceDocRequirementLabel('transfer')).toBe('TO# ref + Dispatch label scans');
+  it('requires the same documents for transfer as for PO', () => {
+    expect(inboundSourceDocRequirementLabel('transfer')).toBe('Bill + Waybill + LR + COA');
+  });
+
+  it('counts transfer uploads from sourceDocuments, same as PO', () => {
+    const count = countInboundSourceDocsUploaded({
+      receiptSource: 'transfer',
+      sourceDocuments: {
+        bill: { fileName: 'bill.pdf' },
+        waybill: { ref: 'WB-001' },
+      },
+    });
+    expect(count.uploaded).toBe(2);
+    expect(count.required).toBe(4);
+    expect(count.complete).toBe(false);
+  });
+
+  it('does not treat a transfer/PO reference number alone as a document upload', () => {
+    const chip = formatInboundSourceDocChip({
+      receiptSource: 'transfer',
+      transferOrderRef: 'TO-2026-001',
+      poNo: 'TO-2026-001',
+    });
+    expect(chip.label).toBe('0 of 4 docs uploaded');
   });
 
   it('counts PO uploads from sourceDocuments', () => {

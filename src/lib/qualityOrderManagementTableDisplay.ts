@@ -29,10 +29,14 @@ export type QualityOrderManagementInput = {
   locationZone?: string | null;
   workflowSteps?: string[] | null;
   generatedLabels?: unknown[] | null;
+  /** GRN-level shipped total; fallback for a line lacking its own shippedQty. */
+  shippedQty?: number | null;
   lineItems?: Array<{
     item?: string;
     itemCode?: string;
     poQty?: number;
+    /** Quantity shipped on this line's truck — the real in-quarantine qty while rcvdQty is still 0. */
+    shippedQty?: number;
     rcvdQty?: number;
     diff?: number;
     unit?: string;
@@ -171,11 +175,25 @@ function resolveBillGrnSource(grn: QualityOrderManagementInput): string {
   return `Bill GRN · ${isQualityGrnMismatch(grn) ? 'mismatch' : 'routine'}`;
 }
 
-function resolveQtyInQNumeric(grn: QualityOrderManagementInput): number {
+/**
+ * The quantity actually sitting in quarantine right now. `rcvdQty` is the right answer once the
+ * line has been physically counted in, but it is a real, present `0` (not null/undefined) for a
+ * line still in transit — `??` alone never falls through that, so a positive check is required.
+ * Falls back to `shippedQty` (what's on the truck) and finally `poQty` (what was ordered).
+ */
+function resolveQtyInQRaw(grn: QualityOrderManagementInput): number {
   const line = grn.lineItems?.[0];
   if (!line) return 0;
-  const qty = Number(line.rcvdQty ?? line.poQty);
-  return Number.isFinite(qty) ? qty : 0;
+  const rcvd = Number(line.rcvdQty);
+  if (Number.isFinite(rcvd) && rcvd > 0) return rcvd;
+  const shipped = Number(line.shippedQty ?? grn.shippedQty);
+  if (Number.isFinite(shipped) && shipped > 0) return shipped;
+  const po = Number(line.poQty);
+  return Number.isFinite(po) ? po : 0;
+}
+
+function resolveQtyInQNumeric(grn: QualityOrderManagementInput): number {
+  return resolveQtyInQRaw(grn);
 }
 
 function resolveQtyInQ(grn: QualityOrderManagementInput): string {
@@ -183,7 +201,7 @@ function resolveQtyInQ(grn: QualityOrderManagementInput): string {
   if (!line) return '—';
   const section = resolveQualitySection(grn);
   const unit = String(line.unit ?? '').trim() || (section === 'PM' ? 'pcs' : 'kg');
-  const qty = Number(line.rcvdQty ?? line.poQty);
+  const qty = resolveQtyInQRaw(grn);
   return formatInboundQty(qty, unit);
 }
 

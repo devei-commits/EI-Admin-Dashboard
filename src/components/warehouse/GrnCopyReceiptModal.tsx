@@ -5,11 +5,14 @@ import { useToast } from '../../context/ToastContext';
 import {
   fetchGRNAssignableUsers,
   fetchGRNQcReference,
+  fetchNextVendorBatchNos,
   generateGRNLabels,
   grnLineItemDisplayName,
+  saveGRNPackLabels,
   updateGRN,
   type AssignableUser,
   type GeneratedLabel,
+  type GeneratedPackLabel,
   type UpdateGRNPayload,
 } from '../../services/grn.service';
 import { deriveGrnQcStatusFromSpecs, type GrnQcSpecsStored } from '../../lib/grnQcSpecs';
@@ -43,6 +46,8 @@ import {
   inboundGrnVerifiedAfterLabelsPayload,
 } from '../../lib/inboundGrnStatus';
 import { displayInboundGrnNo, inboundGrnArrivalConfirmPayload } from '../../lib/inboundGrnTableDisplay';
+import { resolveGrnReceiptSource } from '../../lib/inboundGrnSourceFilter';
+import { fetchMRNList } from '../../services/mrn.service';
 import {
   grnReceiptValidationErrors,
   readGrnReceiptMeta,
@@ -76,7 +81,7 @@ import { GrnBatchDetailsSection } from './GrnBatchDetailsSection';
 import { DocFileUploadCell } from './DocFileUploadCell';
 import { GrnPackagingListSection } from './GrnPackagingListSection';
 import { GrnGenerateLabelsSection } from './GrnGenerateLabelsSection';
-import { printPackLabels } from '../../lib/grnPackLabelPrint';
+import { buildGeneratedPackLabels, printStoredPackLabels } from '../../lib/grnPackLabelPrint';
 import { GrnQuarantineQcSection } from './GrnQuarantineQcSection';
 import { GrnQcCompleteSection } from './GrnQcCompleteSection';
 import { ModalOverlay } from '../ui/ModalOverlay';
@@ -120,6 +125,9 @@ export type GrnCopyReceiptGrn = {
   assignedTo?: string | null;
   /** Linked PO id — used to raise a vendor return (RTV) when QC rejects. */
   purchaseOrderId?: number | null;
+  /** Distinguishes GRN by Transfer (no vendor paperwork) from GRN by PO — see resolveGrnReceiptSource. */
+  receiptSource?: string | null;
+  mrnId?: number | string | null;
 };
 
 type GrnCopyReceiptModalMode = 'confirm-receipt' | 'grn-copy';
@@ -147,6 +155,10 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   onQuarantined,
 }) => {
   const { addToast } = useToast();
+  // A transfer receives goods from another internal warehouse, not a vendor — there is no
+  // Invoice/E-Way Bill/COA/MSDS paperwork to tick or upload, so the dock document checklist
+  // (and the doc-upload gate it drives) does not apply to this receipt source.
+  const isTransferGrn = resolveGrnReceiptSource(grn) === 'transfer';
   const [sourceDocuments, setSourceDocuments] = useState<InboundGrnSourceDocuments>(
     () => ({ ...(grn.sourceDocuments ?? {}) }),
   );
@@ -188,6 +200,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   const [qcBy, setQcBy] = useState('');
   const [qcTestDate, setQcTestDate] = useState(grn.sourceDocuments?.qc?.testDate ?? '');
   const qcLoadedRef = useRef(false);
+  const transferBatchAutoFillRef = useRef(false);
   // Wizard: 1 Confirm Receipt · 2 Confirm Details · 3 Batch Details · 4 Packaging List · 5 Generate Labels · 6 Quarantine → QC · 7 QC → Complete.
   // Resume at the furthest confirmed step so reopening a GRN lands where the user left off.
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7>(() => {
@@ -227,16 +240,15 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   }, []);
   const batchesMeta = useMemo(() => readGrnBatchesMeta(sourceDocuments), [sourceDocuments]);
   /**
-   * Record that the vendor supplied no batch identity. Clears the identity fields so a value typed
-   * before ticking the box cannot be saved as though the vendor had provided it — pack counts and
-   * qty per pack are deliberately kept, since Step 4 and the QR labels depend on them.
+   * Record that the vendor didn't assign a batch number. Clears only vendorBatchNo so a value
+   * typed before ticking the box cannot be saved as though the vendor had provided it — MFG/EXP
+   * dates, COA, and pack counts are deliberately kept: they can still be on the packaging even
+   * without a vendor batch no., and Step 4 / the QR labels depend on the pack counts regardless.
    */
   const setVendorBatchNotApplicable = useCallback((next: boolean): void => {
     setSourceDocuments((prev) => {
       const meta = readGrnBatchesMeta(prev);
-      const rows = (meta.rows ?? []).map((r) =>
-        next ? { ...r, vendorBatchNo: null, mfgDate: null, expDate: null, coaDocs: [], coaFileName: null } : r,
-      );
+      const rows = (meta.rows ?? []).map((r) => (next ? { ...r, vendorBatchNo: null } : r));
       return { ...prev, batches: { ...meta, rows, vendorBatchNotApplicable: next } };
     });
   }, []);
@@ -251,15 +263,73 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   }, []);
 
   // Keep the batch row count in sync with "No. of batches received" whenever step 3 is shown.
+  // Newly-added rows get a system-generated internal Batch No. (B126-#####, backend-allocated —
+  // see fetchNextVendorBatchNos) filled into the "#" column. This is distinct from "Vendor Batch
+  // No.", which stays a plain manual field — staff type in whatever the vendor's own paperwork says.
   const targetBatchCount = Math.max(0, Math.floor(Number(detailsMeta.batchesReceived) || 0));
   const batchRowCount = batchesMeta.rows?.length ?? 0;
   useEffect(() => {
     if (currentStep !== 3 || targetBatchCount <= 0 || batchRowCount === targetBatchCount) return;
-    setSourceDocuments((prev) => {
-      const meta = readGrnBatchesMeta(prev);
-      return { ...prev, batches: { ...meta, rows: reconcileBatchRows(meta.rows ?? [], targetBatchCount) } };
-    });
+    const newRowCount = targetBatchCount - batchRowCount;
+    if (newRowCount <= 0) {
+      setSourceDocuments((prev) => {
+        const meta = readGrnBatchesMeta(prev);
+        return { ...prev, batches: { ...meta, rows: reconcileBatchRows(meta.rows ?? [], targetBatchCount) } };
+      });
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      let generatedCodes: string[] = [];
+      try {
+        generatedCodes = await fetchNextVendorBatchNos(newRowCount);
+      } catch {
+        // Backend allocation failed (offline/etc.) — new rows just show "Batch N" until retried.
+      }
+      if (cancelled) return;
+      setSourceDocuments((prev) => {
+        const meta = readGrnBatchesMeta(prev);
+        const rows = reconcileBatchRows(meta.rows ?? [], targetBatchCount);
+        const filledRows = rows.map((row, i) =>
+          i >= batchRowCount && !row.systemBatchNo && generatedCodes[i - batchRowCount]
+            ? { ...row, systemBatchNo: generatedCodes[i - batchRowCount] }
+            : row,
+        );
+        return { ...prev, batches: { ...meta, rows: filledRows } };
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [currentStep, targetBatchCount, batchRowCount]);
+
+  // GRN by Transfer: read back how many distinct batches the source MRN actually shipped (recorded
+  // per picked pack at dispatch time — see handlePickSplitNext) instead of asking the receiver to
+  // count/re-key it. Only fills the field once, and only when it isn't already set — a receiver
+  // correcting a short/damaged receipt is never silently overwritten. Transfer GRNs carry the MRN's
+  // human-readable number in `poNo` (there is no numeric mrnId on the GRN record), so the match is
+  // by mrnNo, not id — see resolveGrnReceiptSource / grn.poNo usage elsewhere in this modal.
+  useEffect(() => {
+    if (!isTransferGrn || currentStep !== 2 || transferBatchAutoFillRef.current) return;
+    if (detailsMeta.batchesReceived != null) return;
+    const mrnNo = String(grn.poNo ?? '').trim();
+    if (!mrnNo) return;
+    transferBatchAutoFillRef.current = true;
+    fetchMRNList()
+      .then((list) => {
+        const source = list.find((m) => m.mrnNo === mrnNo);
+        const batches = new Set(
+          (source?.generatedLabels ?? [])
+            .map((l) => String(l.vendorBatch ?? '').trim())
+            .filter((b) => b !== ''),
+        );
+        if (batches.size > 0) patchDetailsMeta({ batchesReceived: batches.size });
+      })
+      .catch(() => {
+        // No source batch data available (older transfer, or MRN lookup failed) — leave the field
+        // for the receiver to fill in manually, same as it works today.
+      });
+  }, [isTransferGrn, currentStep, detailsMeta.batchesReceived, grn.poNo, patchDetailsMeta]);
 
   const packagingMeta = useMemo(() => readGrnPackagingMeta(sourceDocuments), [sourceDocuments]);
   const setPackagingRow = useCallback((index: number, patch: Partial<GrnPackagingRow>): void => {
@@ -409,9 +479,15 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   const physicalTotal = packRows.reduce((sum, row) => sum + row.actualQty, 0);
   const docsLocked = grnReceiptDocumentsLocked(mode, grn);
   /** Required receipt documents still missing — drives the * outlines and the step-2 block. */
-  const missingDocKeys = useMemo(() => missingRequiredGrnDocs(sourceDocuments), [sourceDocuments]);
+  const missingDocKeys = useMemo(
+    () => missingRequiredGrnDocs(sourceDocuments, { skipChecklistDocs: isTransferGrn }),
+    [sourceDocuments, isTransferGrn],
+  );
   /** Only the documents the dock checklist says arrived get an upload slot. */
-  const requiredDocKeys = useMemo(() => requiredGrnDocKeys(sourceDocuments), [sourceDocuments]);
+  const requiredDocKeys = useMemo(
+    () => requiredGrnDocKeys(sourceDocuments, { skipChecklistDocs: isTransferGrn }),
+    [sourceDocuments, isTransferGrn],
+  );
 
   const updateDocRef = (key: GrnCopyDocRefKey, ref: string): void => {
     setDocRefs((prev) => ({ ...prev, [key]: ref }));
@@ -676,7 +752,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   };
 
   const handleConfirmReceipt = async (): Promise<void> => {
-    const errors = grnReceiptValidationErrors(receiptMeta);
+    const errors = grnReceiptValidationErrors(receiptMeta, { skipChecklist: isTransferGrn });
     if (errors.length) {
       addToast('error', errors[0]);
       return;
@@ -739,7 +815,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
     }
     // Invoice / E-Way Bill / COA gate label generation and therefore completion. Refusing here —
     // where they are entered — instead of silently at step 5 keeps the reason next to the fields.
-    const docsError = requiredGrnDocsError(sourceDocuments);
+    const docsError = requiredGrnDocsError(sourceDocuments, { skipChecklistDocs: isTransferGrn });
     if (docsError) {
       addToast('error', docsError);
       return;
@@ -809,11 +885,25 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   }, [sourceDocuments, docRefs, grn.id]);
 
   /**
-   * Hidden, always-mounted QR canvases for the pack labels — decoupled from step 5
-   * (GrnGenerateLabelsSection only renders while `currentStep === 5`), so the header's
-   * reprint button works from any step without navigating back and re-triggering generation.
+   * Persist the pack label snapshot from Generate Labels (step 5) before it's printed there, so
+   * every later reprint ("Print pack labels", below) shows exactly this — never a recomputation
+   * from batches/packaging, which could have since been edited.
+   */
+  const handlePackLabelsGenerated = useCallback(
+    async (labels: GeneratedPackLabel[]): Promise<void> => {
+      const saved = await saveGRNPackLabels(grn.id, labels);
+      onSaved({ ...grn, generatedPackLabels: saved });
+    },
+    [grn, onSaved],
+  );
+
+  /**
+   * Hidden, always-mounted QR canvases — only used as the one-time backfill path below, for a GRN
+   * whose labels were generated before pack-label persistence existed (no grn.generatedPackLabels
+   * on file yet). Kept off the main render path otherwise.
    */
   const reprintPackGridRef = useRef<HTMLDivElement>(null);
+  const [reprintingPackLabels, setReprintingPackLabels] = useState(false);
   const packLabelCtx = useMemo(
     () => ({
       batches: batchesMeta.rows ?? [],
@@ -824,14 +914,40 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
     }),
     [batchesMeta.rows, lineItem, grn.vendor],
   );
-  const handleReprintPackLabels = (): void => {
-    const rows = packagingMeta.rows ?? [];
-    if (!rows.length) return;
-    const canvases = reprintPackGridRef.current
-      ? Array.from(reprintPackGridRef.current.querySelectorAll<HTMLCanvasElement>('canvas'))
-      : [];
-    const qrDataUrls = rows.map((_, i) => canvases[i]?.toDataURL('image/png') ?? '');
-    if (!printPackLabels(rows, qrDataUrls, packLabelCtx)) {
+
+  /**
+   * Reprint the pack labels persisted at Generate Labels (step 5) — available from any step, for a
+   * lost/damaged label, without ever regenerating: same labels every time. The only exception is a
+   * GRN whose labels were generated before pack-label persistence existed — there, this backfills a
+   * snapshot once (from the current, by-then-locked batches/packaging) and persists it, so every
+   * later click of this same button reprints that frozen snapshot too.
+   */
+  const handleReprintPackLabels = async (): Promise<void> => {
+    if (reprintingPackLabels) return;
+    let labels = grn.generatedPackLabels ?? [];
+    if (!labels.length) {
+      const rows = packagingMeta.rows ?? [];
+      if (!rows.length) {
+        addToast('error', 'No pack labels generated yet — use Generate Labels (step 5) first.');
+        return;
+      }
+      const canvases = reprintPackGridRef.current
+        ? Array.from(reprintPackGridRef.current.querySelectorAll<HTMLCanvasElement>('canvas'))
+        : [];
+      const qrDataUrls = rows.map((_, i) => canvases[i]?.toDataURL('image/png') ?? '');
+      labels = buildGeneratedPackLabels(rows, qrDataUrls, packLabelCtx);
+      setReprintingPackLabels(true);
+      try {
+        labels = await saveGRNPackLabels(grn.id, labels);
+        onSaved({ ...grn, generatedPackLabels: labels });
+      } catch {
+        addToast('error', 'Failed to save pack labels — try again.');
+        return;
+      } finally {
+        setReprintingPackLabels(false);
+      }
+    }
+    if (!printStoredPackLabels(labels)) {
       addToast('error', 'Could not open print window. Allow popups and try again.');
       return;
     }
@@ -905,7 +1021,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
     // GRN-2026-0185 reached QC with none of the four documents on file, because Send to QC does not
     // pass through step 2. The same requirement applies here — QC inspects against the COA, and the
     // GRN cannot be completed later without these anyway.
-    const docsError = requiredGrnDocsError(sourceDocuments);
+    const docsError = requiredGrnDocsError(sourceDocuments, { skipChecklistDocs: isTransferGrn });
     if (docsError) {
       addToast('error', docsError);
       return;
@@ -1156,15 +1272,20 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
               >
                 {generating ? 'Generating…' : hasExistingLabels ? 'Regenerate Labels' : 'Generate Labels'}
               </button>
-              {(packagingMeta.rows?.length ?? 0) > 0 ? (
+              {(grn.generatedPackLabels?.length ?? packagingMeta.rows?.length ?? 0) > 0 ? (
                 <button
                   type="button"
-                  onClick={handleReprintPackLabels}
-                  title={`Reprint the ${packagingMeta.rows!.length} pack label${packagingMeta.rows!.length === 1 ? '' : 's'} for this GRN — available from any step`}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-semibold text-ink-2 hover:bg-surface-2"
+                  disabled={reprintingPackLabels}
+                  onClick={() => void handleReprintPackLabels()}
+                  title={
+                    grn.generatedPackLabels?.length
+                      ? `Reprint the ${grn.generatedPackLabels.length} pack label${grn.generatedPackLabels.length === 1 ? '' : 's'} generated for this GRN — available from any step`
+                      : 'Print pack labels for this GRN'
+                  }
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-semibold text-ink-2 hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Printer className="h-4 w-4" aria-hidden />
-                  Print pack labels
+                  {reprintingPackLabels ? 'Preparing…' : 'Print pack labels'}
                 </button>
               ) : null}
               <button
@@ -1185,8 +1306,8 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
         </div>
 
         {/* Hidden (display:none — canvas drawing isn't tied to visibility), always-mounted QR
-            canvases backing the header's reprint button — one per pack, independent of
-            currentStep so a reprint never depends on being back on step 5. */}
+            canvases — only read from by handleReprintPackLabels' one-time legacy backfill path
+            (a GRN whose labels predate pack-label persistence). */}
         <div aria-hidden className="hidden" ref={reprintPackGridRef}>
           {(packagingMeta.rows ?? []).map((row) => (
             <QRCodeCanvas key={row.packagingNo} value={row.packagingNo} size={132} includeMargin />
@@ -1272,6 +1393,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
               onChange={patchReceiptMeta}
               assignableUsers={assignableUsers}
               disabled={docsLocked}
+              hideChecklist={isTransferGrn}
             />
           ) : null}
 
@@ -1305,7 +1427,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
               </p>
               {missingDocKeys.length > 0 && (
                 <p className="mt-2 rounded-md border border-err bg-err-soft px-2 py-1 text-[11px] font-semibold text-err">
-                  {requiredGrnDocsError(sourceDocuments)}
+                  {requiredGrnDocsError(sourceDocuments, { skipChecklistDocs: isTransferGrn })}
                 </p>
               )}
               <div className="mt-3 grid gap-3 sm:grid-cols-3">
@@ -1395,6 +1517,8 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
               vendor={grn.vendor}
               unit={lineItem.unit}
               disabled={docsLocked}
+              onGenerate={handlePackLabelsGenerated}
+              onGenerateFailed={() => addToast('error', 'Failed to save pack labels — try again.')}
               onPrinted={() => void handlePackLabelsPrinted()}
               onPrintBlocked={() =>
                 addToast('error', 'Could not open print window. Allow popups and try again.')
