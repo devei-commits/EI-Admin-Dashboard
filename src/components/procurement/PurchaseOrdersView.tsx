@@ -25,6 +25,7 @@ import { CommentsPanel } from '../orders/CommentsPanel';
 import { fetchCommentCounts } from '../../services/fulfillment.service';
 import { poBackendId } from '../../services/poApproval.service';
 import { leadConnectingDateForLine, leadConnectingSummaryForPo } from '../../lib/poLeadConnectingDate';
+import { normConnectingDateKey } from '../../pages/procurement/procurementDataMappers';
 
 /** Existing 3-state GRN status → spec 6-stage (best-effort until the stage axis is added). */
 function mapGrnStatusToStage(status: string | null | undefined): GrnStage {
@@ -500,6 +501,8 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
       received: number; billed: number; otherPos: number; daysOpen: number; leadDays: number;
       /** PO date + this line's lead days. null when either is unknown — see normalizeLeadDays. */
       leadConnectingDate: string | null;
+      /** Planning-sourced required-by date for this line, from record.connectingDateByItem. */
+      connectingDate: string | null;
     }> = [];
     const now = Date.now();
     for (const r of records) {
@@ -526,6 +529,8 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
           if (complete) { received += gl.reduce((s, x) => s + (Number(x.rcvdQty) || 0), 0); billed += gl.reduce((s, x) => s + (Number(x.invoiceQty) || 0), 0); }
           grnLines.push({ grnNo: g.grnNo, qty, stage: mapGrnStatusToStage(g.status) });
         }
+        const connKey = normConnectingDateKey(itemCode || l.item);
+        const connRaw = r.connectingDateByItem?.[connKey];
         out.push({
           record: r, item: l.item, itemCode, itemKey, poQty: Number(l.qty) || 0, unit: l.unit,
           grnLines, received, billed,
@@ -535,6 +540,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
           // column (which only compares elapsed days) but would date every unquoted line to the PO
           // date itself.
           leadConnectingDate: leadConnectingDateForLine(r.createdDate, l.leadTimeDays),
+          connectingDate: connRaw && String(connRaw).trim() ? String(connRaw).trim() : null,
         });
       }
     }
@@ -731,6 +737,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                     <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">GRN Qty (GRN# · qty)</th>
                     <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">GRN Status</th>
                     <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">Purchase Status</th>
+                    <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap" title="Required-by date from Planning">Connecting</th>
                     <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap" title="PO date + this item's lead days">Lead Connecting Date</th>
                     <SortableTableTh label="SLA" column="sla" sortColumn={sortBy} sortDirection={sortDir} onSort={handleHeaderSort} />
                     <th scope="col" className="px-3 py-2 text-[10px] font-bold text-ink-3 uppercase tracking-wide whitespace-nowrap">Other POs</th>
@@ -785,6 +792,13 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({
                         </td>
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           {psCfg ? <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full border text-[9.5px] font-semibold ${psCfg.text} ${psCfg.bg} ${psCfg.border}`}>{psCfg.label}{ps === 'received' ? ` · ${lr.received.toLocaleString('en-IN')}` : ps === 'billed' ? ` · ${lr.billed.toLocaleString('en-IN')}` : ''}</span> : <span className="text-[10px] text-ink-4">— draft</span>}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {lr.connectingDate ? (
+                            <p className="text-xs text-ink-2 tabular-nums">{fmtDate(lr.connectingDate)}</p>
+                          ) : (
+                            <span className="text-xs text-ink-4">—</span>
+                          )}
                         </td>
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           {lr.leadConnectingDate ? (

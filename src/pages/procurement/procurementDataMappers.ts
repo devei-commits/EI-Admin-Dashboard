@@ -980,7 +980,7 @@ export function mapPurchaseOrderToDraftPO(po: PurchaseOrder, requests: Procureme
     vendorRating: 0,
     alertMessage: approvalApproved
       ? `Approved on ${approvedLabel || '—'}. Ready for release.`
-      : 'Loaded from backend.',
+      : '',
     alertType: approvalApproved ? 'ok' : 'warning',
     lineItems,
     subtotal: parseFloat(subtotal.toFixed(2)),
