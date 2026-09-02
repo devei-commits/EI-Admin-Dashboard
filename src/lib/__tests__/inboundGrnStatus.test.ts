@@ -81,6 +81,26 @@ describe('inboundGrnRackAssignedPayload', () => {
     expect(inboundGrnRackAssignedPayload(racked).status).toBe('Under GRN');
   });
 
+  /**
+   * GRN-2026-0100: QC was fast-track approved, then Assign Rack was saved. The save also resends
+   * whatever qcSpecs reference the caller holds (via persistUpdate's shared payload) — an
+   * unreviewed/blank checklist, since Assign Rack has no checklist UI — and the backend derives
+   * qc_status fresh from any qcSpecs it receives, or 400s outright without a fast-track flag. Without
+   * qcStatus + qcFastTrack restated here, the approval silently regressed to 'Under test' and the
+   * row fell straight back to "⏳ Awaiting QC" / QUARANTINED.
+   */
+  it('restates the QC verdict with a fast-track flag so racking cannot undo an approval', () => {
+    const payload = inboundGrnRackAssignedPayload(racked);
+    expect(payload.qcStatus).toBe('Passed');
+    expect(payload.qcFastTrack).toBe(true);
+  });
+
+  it('does not restate a QC verdict that was never reached', () => {
+    const pending = inboundGrnRackAssignedPayload({ ...racked, qcStatus: 'Pending' });
+    expect(pending.qcStatus).toBeUndefined();
+    expect(pending.qcFastTrack).toBeUndefined();
+  });
+
   it('advances the stepper to QC Inspection', () => {
     const { workflowSteps } = inboundGrnRackAssignedPayload(racked);
     expect(workflowSteps).toContain('PO Received');

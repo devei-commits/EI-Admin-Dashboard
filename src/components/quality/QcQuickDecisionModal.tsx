@@ -43,9 +43,13 @@ const QcQuickDecisionModal: React.FC<QcQuickDecisionModalProps> = ({ row, onClos
     try {
       // Mirrors QualityCheckModal.persist(): the backend has only ever been exercised with
       // qcStatus alongside qcSpecs, so send both rather than qcStatus alone.
+      // qcFastTrack tells the backend not to run validateQcSpecsForPassed — this modal skips the
+      // full checklist on purpose, so the reference qcSpecs above has no reviewed (Pass/Fail +
+      // result) tests for that validator to find, and "Approve QC" would 400 every time without it.
       await updateGRN(row.id, {
         qcStatus: verdict === 'approve' ? 'Passed' : 'Rejected',
         ...(qcSpecs ? { qcSpecs } : {}),
+        qcFastTrack: true,
       });
       onSaved();
       onClose();

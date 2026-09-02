@@ -238,6 +238,9 @@ export interface UpdateGRNPayload {
   expiry?: string | null;
   mfgBatch?: string | null;
   sourceDocuments?: InboundGrnSourceDocuments | null;
+  /** Skips the backend's mandatory-QC-test validation when qcStatus is 'Passed' — for
+   * QcQuickDecisionModal's fast-track approve, which has no reviewed checklist to validate. */
+  qcFastTrack?: boolean;
 }
 
 export async function updateGRN(id: string, payload: UpdateGRNPayload): Promise<GRNRecordFromApi> {

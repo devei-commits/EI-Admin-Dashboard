@@ -147,7 +147,7 @@ export function inboundGrnSendToQuarantineQcPayload(
  * looked like the save had not happened (GRN-2026-0197: location_prefix DEFAULT saved, status
  * still On Hold, workflow_steps still just Receipt Confirmed / Sent to QC).
  *
- * Two things advance here:
+ * Three things advance here:
  *  - Steps: by the time stock is being racked the PO was received, the qty was checked and QC is
  *    done, so those three are stamped. 'Label Generation' is deliberately NOT stamped — labels are
  *    generated in GRN Copy, and that step is also what the backend accepts as proof labels exist
@@ -155,24 +155,40 @@ export function inboundGrnSendToQuarantineQcPayload(
  *  - Status: a GRN quarantined into QC ('On Hold') is released to 'Under GRN' once QC has PASSED,
  *    matching what GRN Copy does on its own hold release. A failed or still-pending QC stays on
  *    hold — racking must not be a way out of quarantine.
+ *  - qcStatus: re-asserted explicitly (not just left alone) when QC already passed, with qcFastTrack
+ *    so the backend accepts it with no checklist attached. Assign Rack's save also resends whatever
+ *    `qcSpecs` reference the caller is holding via persistUpdate's shared payload (or, with none
+ *    resent, the row's own stored qc_specs from the earlier fast-track approve) — either way an
+ *    unreviewed/blank checklist, which the backend's Passed-status gate rejects outright (400) or,
+ *    lacking qcFastTrack, silently re-derives down to 'Under test'. Restating both here lets the
+ *    backend's explicit-status-with-fast-track path win instead (GRN-2026-0100: QC approved, Assign
+ *    Rack saved, row fell straight back to "⏳ Awaiting QC" / QUARANTINED — qc_status regressed and
+ *    status stuck On Hold).
  */
 export const INBOUND_GRN_RACK_ASSIGNED_STEP = 'Rack Assigned';
 
 export function inboundGrnRackAssignedPayload(grn: InboundGrnStatusInput): {
   status?: string;
+  qcStatus?: string;
+  qcFastTrack?: boolean;
   workflowSteps: string[];
 } {
   let steps = appendInboundGrnWorkflowStep(grn.workflowSteps, INBOUND_GRN_RECEIPT_CONFIRMED_STEP);
   steps = appendInboundGrnWorkflowStep(steps, 'PO Received');
   steps = appendInboundGrnWorkflowStep(steps, 'Qty Check');
+  const qcTested = isInboundGrnQcTested(grn);
   if (isInboundGrnQcComplete(grn)) {
     steps = appendInboundGrnWorkflowStep(steps, 'QC Inspection');
   }
   steps = appendInboundGrnWorkflowStep(steps, INBOUND_GRN_RACK_ASSIGNED_STEP);
 
   const status = String(grn.status ?? '').trim();
-  const releaseFromHold = status === 'On Hold' && isInboundGrnQcTested(grn);
-  return releaseFromHold ? { status: 'Under GRN', workflowSteps: steps } : { workflowSteps: steps };
+  const releaseFromHold = status === 'On Hold' && qcTested;
+  return {
+    ...(releaseFromHold ? { status: 'Under GRN' } : {}),
+    ...(qcTested ? { qcStatus: 'Passed', qcFastTrack: true } : {}),
+    workflowSteps: steps,
+  };
 }
 
 export function inboundGrnVerifiedAfterLabelsPayload(
