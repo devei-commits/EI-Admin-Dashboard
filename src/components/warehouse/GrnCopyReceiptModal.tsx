@@ -44,6 +44,8 @@ import {
   inboundGrnMismatchQuarantinePayload,
   inboundGrnSendToQuarantineQcPayload,
   inboundGrnVerifiedAfterLabelsPayload,
+  isInboundGrnQcComplete,
+  isInboundGrnQcRejected,
 } from '../../lib/inboundGrnStatus';
 import { displayInboundGrnNo, inboundGrnArrivalConfirmPayload } from '../../lib/inboundGrnTableDisplay';
 import { resolveGrnReceiptSource } from '../../lib/inboundGrnSourceFilter';
@@ -201,11 +203,32 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   const [qcTestDate, setQcTestDate] = useState(grn.sourceDocuments?.qc?.testDate ?? '');
   const qcLoadedRef = useRef(false);
   const transferBatchAutoFillRef = useRef(false);
+  // Captured once at mount (not derived from the live `grn` prop, which can go stale mid-session —
+  // see qcAlreadyDecided below): true when QC was already decided BEFORE this modal opened, whether
+  // through this wizard's own sourceDocuments.qc.verdict or a different modal entirely (the
+  // fast-track QcQuickDecisionModal, which only ever sets qc_status — GRN-2026-0100).
+  const qcDecidedAtOpen = useRef(
+    grn.sourceDocuments?.qc?.verdict === 'accept' ||
+      grn.sourceDocuments?.qc?.verdict === 'reject' ||
+      isInboundGrnQcComplete(grn),
+  );
+  // NOTE: sourceDocuments.qc.verdict being 'accept'/'reject' does NOT mean the checklist below was
+  // ever actually filled in — this wizard's own handleQcAccept sets that verdict too, but still
+  // carries forward the blank reference qcSpecs (every test "passed": null) whenever qcFastTrack was
+  // true, e.g. a fast-tracked GRN that was then walked through this wizard once already
+  // (GRN-2026-0101: qc_status 'Passed', verdict 'accept', qc_specs entirely unreviewed). So step 7
+  // must not re-demand the checklist for ANY decision made before this mount, regardless of which
+  // path made it — qcDecidedAtOpen alone (below) is the right check, not a narrower "was it really
+  // fast-tracked" guess.
   // Wizard: 1 Confirm Receipt · 2 Confirm Details · 3 Batch Details · 4 Packaging List · 5 Generate Labels · 6 Quarantine → QC · 7 QC → Complete.
   // Resume at the furthest confirmed step so reopening a GRN lands where the user left off.
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7>(() => {
-    const qcVerdict = grn.sourceDocuments?.qc?.verdict;
-    const qcDecided = qcVerdict === 'accept' || qcVerdict === 'reject';
+    // GRN-2026-0100: QC approved via the row's fast-track QcQuickDecisionModal, then Assign Rack.
+    // qcDecidedAtOpen (above) covers that case in addition to this wizard's own verdict — reading
+    // sourceDocuments.qc.verdict alone left this false despite qc_status already being 'Passed', so
+    // this always landed on step 7 and re-demanded a full QC checklist before Generate Labels/
+    // Complete were reachable — stock stayed in_transit because Complete was never reached.
+    const qcDecided = qcDecidedAtOpen.current;
     const labelsDone =
       (Array.isArray(grn.generatedLabels) && grn.generatedLabels.length > 0) ||
       (grn.workflowSteps ?? []).includes('Label Generation');
@@ -1015,8 +1038,12 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
   // QC has already been decided (Accept or Reject) in this session or an earlier one. Once true,
   // step 6's forward action must NOT be "Send to QC" again — that reopens the quarantine hold on a
   // GRN that already passed. Read from sourceDocuments (proper local state) rather than grn.qcStatus
-  // (a raw prop that goes stale mid-session — see the receiptModal sync fix in Inbound.tsx).
-  const qcAlreadyDecided = sourceDocuments.qc?.verdict === 'accept' || sourceDocuments.qc?.verdict === 'reject';
+  // (a raw prop that goes stale mid-session — see the receiptModal sync fix in Inbound.tsx) for any
+  // decision made THIS session; qcDecidedAtOpen (captured once at mount, same as currentStep above)
+  // additionally covers a decision made earlier through a different modal entirely — the fast-track
+  // QcQuickDecisionModal never touches sourceDocuments.qc, only qc_status (GRN-2026-0100).
+  const qcAlreadyDecided =
+    sourceDocuments.qc?.verdict === 'accept' || sourceDocuments.qc?.verdict === 'reject' || qcDecidedAtOpen.current;
   const handleSendToQc = async (): Promise<void> => {
     // GRN-2026-0185 reached QC with none of the four documents on file, because Send to QC does not
     // pass through step 2. The same requirement applies here — QC inspects against the COA, and the
@@ -1076,12 +1103,19 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
       const mergedDocs = docRefsToSourceDocuments(docRefs, { ...sourceDocuments, qc: qcMeta });
       // Accepting QC releases the quarantine hold even when completion is still gated.
       const releasedFromHold = String(grn.status ?? '').trim() === 'On Hold';
+      // qcDecidedAtOpen means QC was already fast-tracked (QcQuickDecisionModal) before this wizard
+      // was even opened — qcSpecs here is still that path's unreviewed reference checklist, which
+      // validateQcSpecsForPassed rejects with a 400 unless told to skip it. Without this, Accept
+      // 400ed on save #1, so generate-labels-and-complete below (which needs this to succeed first)
+      // never ran and stock never left in_transit (GRN-2026-0100). A genuine fresh review here
+      // (qcDecidedAtOpen false) keeps full validation — the user actually filled qcSpecs in.
       // 1) Save the QC results (always succeeds).
       await updateGRN(grn.id, {
         qcSpecs,
         qcStatus: 'Passed',
         qcBy: qcBy || undefined,
         sourceDocuments: mergedDocs,
+        qcFastTrack: qcDecidedAtOpen.current,
         ...(releasedFromHold ? { status: 'Under GRN' } : {}),
       });
       setSourceDocuments((prev) => ({ ...prev, qc: qcMeta }));
@@ -1114,6 +1148,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
           await updateGRN(grn.id, {
             status: 'GRN Complete',
             qcStatus: 'Passed',
+            qcFastTrack: qcDecidedAtOpen.current,
             workflowSteps: [...new Set([...labelRes.workflowSteps, ...GRN_COMPLETE_WORKFLOW_STEPS])],
           });
           addToast('success', 'QC accepted · GRN completed and stock put away. Print the labels below.');
@@ -1149,6 +1184,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
         await updateGRN(grn.id, {
           status: 'GRN Complete',
           qcStatus: 'Passed',
+          qcFastTrack: qcDecidedAtOpen.current,
           workflowSteps: [...new Set([...(grn.workflowSteps ?? []), ...GRN_COMPLETE_WORKFLOW_STEPS])],
         });
         addToast('success', 'QC accepted · GRN completed and stock put away.');
@@ -1560,7 +1596,49 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
               </ul>
             </div>
           ) : null}
-          {currentStep === 7 ? (
+          {currentStep === 7 && qcDecidedAtOpen.current ? (
+            <section className="rounded-xl border border-border p-4 space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-ink">7 · Quality Check → Complete</h3>
+                <p className="mt-1 text-xs text-ink-3">
+                  QC was already decided for this GRN — there is no spec checklist to fill in here.
+                </p>
+              </div>
+              <div
+                className={`inline-flex items-center rounded-lg border px-3 py-2 text-sm font-semibold ${
+                  isInboundGrnQcRejected(grn)
+                    ? 'border-err-soft bg-err-soft text-err'
+                    : 'border-ok-soft bg-ok-soft text-ok'
+                }`}
+              >
+                {isInboundGrnQcRejected(grn) ? '❌ QC already Rejected' : '✅ QC already Passed'}
+              </div>
+              <div className="max-w-xs">
+                {/* Not part of the checklist — a separate accountability field the backend requires
+                    before it will mark the GRN Complete ("QC by (inspector name) is required" —
+                    grnCompletionBlockers in the backend controller). The fast-track decision never
+                    collects it, so it has to be filled in here at least once before Accept can
+                    actually complete the GRN, even though QC itself is already decided. */}
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-3" htmlFor="grn-qc-analyst-fasttrack">
+                  QC Analyst
+                </label>
+                <input
+                  id="grn-qc-analyst-fasttrack"
+                  type="text"
+                  value={qcBy}
+                  disabled={docsLocked || decidingQc}
+                  onChange={(e) => setQcBy(e.target.value)}
+                  placeholder="e.g. P. Bhatia"
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand disabled:cursor-not-allowed disabled:bg-surface-3"
+                />
+              </div>
+              <p className="text-xs text-ink-3">
+                Use Accept below to generate labels and complete the GRN, or Reject to send the goods
+                back to the vendor.
+              </p>
+            </section>
+          ) : null}
+          {currentStep === 7 && !qcDecidedAtOpen.current ? (
             <GrnQcCompleteSection
               qcSpecs={qcSpecs}
               loading={qcLoading}
@@ -1718,13 +1796,15 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                   <button
                     type="button"
                     onClick={() => void handleQcAccept()}
-                    disabled={decidingQc || !qcSpecs}
+                    disabled={decidingQc || !qcSpecs || !qcBy.trim()}
                     title={
-                      canCompleteAfterQc
-                        ? 'Generates the QR labels and completes the GRN in one step — no further screens.'
-                        : putawayMissing.length > 0
-                          ? 'Accept saves QC and releases the hold — rack assignment continues in Assign Rack on the inbound row.'
-                          : 'Accept saves QC, but labels still can\'t be generated — see what\'s listed above.'
+                      !qcBy.trim()
+                        ? 'Enter the QC Analyst name above first — the backend requires it to mark a GRN Complete.'
+                        : canCompleteAfterQc
+                          ? 'Generates the QR labels and completes the GRN in one step — no further screens.'
+                          : putawayMissing.length > 0
+                            ? 'Accept saves QC and releases the hold — rack assignment continues in Assign Rack on the inbound row.'
+                            : 'Accept saves QC, but labels still can\'t be generated — see what\'s listed above.'
                     }
                     className="rounded-lg bg-ok px-4 py-2 text-sm font-semibold text-white hover:bg-ok disabled:cursor-not-allowed disabled:opacity-50"
                   >

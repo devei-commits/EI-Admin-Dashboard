@@ -64,6 +64,7 @@ import {
   batchCoverageRowClass,
   batchCoverageTier,
   batchCoverageDetailMap,
+  effectivePmLinesForBatch,
   isItemFullyCovered,
   itemCoverageTierFromBatches,
   // Aliased: `Planning` (below) has its own identical local closure of the same name, scoped to
@@ -5261,7 +5262,9 @@ const Planning = () => {
     for (const batch of batches) {
       const key = releaseBatchPickKey(batch);
       const sizeKg = Number(batch.sizeKg) || 0;
-      const lines = ((item.itemType === 'RM' ? batch.rmLines : batch.pmLines) ?? []) as BomLine[];
+      // PM falls back to the PI-level packaging snapshot when this batch's own pmLines is still
+      // empty (not yet BOM-confirmed per batch) — see effectivePmLinesForBatch.
+      const lines = (item.itemType === 'RM' ? (batch.rmLines ?? []) : effectivePmLinesForBatch(batch)) as BomLine[];
       const line = lines.find(lineMatchesItem);
       if (!line || !(sizeKg > 0)) { out.set(key, 0); continue; }
 
@@ -5308,7 +5311,11 @@ const Planning = () => {
         return allowedProductNames.includes(String(b.productName ?? '').trim().toLowerCase());
       })
       .filter((b) => {
-        const lines = item.itemType === 'RM' ? (b.rmLines ?? []) : (b.pmLines ?? []);
+        // PM falls back to the PI-level packaging snapshot when this batch's own pmLines is still
+        // empty (not yet BOM-confirmed per batch) — see effectivePmLinesForBatch. Without this, a
+        // batch the server-side items-involved batchCount already counts (it applies the same
+        // fallback) silently drops out of this modal/list, so the modal reads lower than the badge.
+        const lines = item.itemType === 'RM' ? (b.rmLines ?? []) : effectivePmLinesForBatch(b);
         return lines.some((line: { raw_material_id?: number; pack_material_id?: number; rm_code?: string; pm_code?: string; code?: string; inci_name?: string; name?: string; description?: string }) => {
           const lineId = item.itemType === 'RM' ? Number(line.raw_material_id) : Number(line.pack_material_id);
           const lineCode = String(line.rm_code ?? line.pm_code ?? line.code ?? '').trim().toLowerCase();

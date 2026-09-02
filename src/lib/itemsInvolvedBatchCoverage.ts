@@ -212,6 +212,39 @@ type BatchBomLine = {
   pct_w_w?: number; pct?: number; qty_per_unit?: number; qty?: number;
 };
 
+/**
+ * Effective PM BOM lines for a batch: the batch's OWN pm_lines when it has any (per-batch BOM
+ * confirmed), else the PI-level packaging_materials snapshot converted to the same per-unit shape.
+ *
+ * Mirrors the backend's countPlanningBatchesTouchingPm fallback (items-involved batchCount) — a
+ * batch not yet BOM-confirmed at the per-batch level (the common case; most batches never get an
+ * individual Swap) is still counted server-side against its PI's whole-BOM packaging list. Without
+ * this fallback here, that same batch silently drops out of every client-side "uses this item"
+ * computation — the "Batches using <item>" modal, the Batches-tab coverage tint — even though the
+ * server-side badge on the Items Involved row still counts it. That's what made the modal's count
+ * read lower than the badge above it for a widely-used PM like a shipping sticker: nearly every
+ * batch touching it still had empty pm_lines.
+ */
+export function effectivePmLinesForBatch(batch: PlanningBatchAllRow): BatchBomLine[] {
+  if (Array.isArray(batch.pmLines) && batch.pmLines.length > 0) return batch.pmLines as BatchBomLine[];
+  const pkg = batch.piPackagingMaterials ?? [];
+  if (pkg.length === 0) return [];
+  const orderQty = parseQtyLabelInt(batch.orderQty);
+  return pkg.map((p) => {
+    const totalPcs = Number(p.quantity) || 0;
+    const qty_per_unit = orderQty > 0 ? totalPcs / orderQty : totalPcs;
+    return {
+      pack_material_id: p.pack_material_id,
+      pm_code: p.code,
+      code: p.code,
+      description: p.name,
+      name: p.name,
+      qty_per_unit,
+      qty: qty_per_unit,
+    };
+  });
+}
+
 /** Stable key for one batch, unique across all planning-extracted rows. */
 export const releaseBatchPickKey = (batch: PlanningBatchAllRow): string =>
   `${batch.planningExtractedId}-${batch.id ?? batch.sequence ?? batch.batchCode ?? 'batch'}`;
@@ -241,7 +274,7 @@ function batchesForItem(
         : allowedProductNames.includes(String(b.productName ?? '').trim().toLowerCase()),
     )
     .filter((b) => {
-      const lines = (item.itemType === 'RM' ? b.rmLines : b.pmLines) ?? [];
+      const lines = item.itemType === 'RM' ? (b.rmLines ?? []) : effectivePmLinesForBatch(b);
       return (lines as BatchBomLine[]).some((line) => {
         const lineId = item.itemType === 'RM' ? Number(line.raw_material_id) : Number(line.pack_material_id);
         const lineCode = String(line.rm_code ?? line.pm_code ?? line.code ?? '').trim().toLowerCase();
@@ -281,7 +314,7 @@ export function allocateConsolidatedReqAcrossBatches(
   for (const batch of batches) {
     const key = releaseBatchPickKey(batch);
     const sizeKg = Number(batch.sizeKg) || 0;
-    const lines = ((item.itemType === 'RM' ? batch.rmLines : batch.pmLines) ?? []) as BatchBomLine[];
+    const lines = (item.itemType === 'RM' ? (batch.rmLines ?? []) : effectivePmLinesForBatch(batch)) as BatchBomLine[];
     const line = lines.find(lineMatchesItem);
     if (!line || !(sizeKg > 0)) { out.set(key, 0); continue; }
 

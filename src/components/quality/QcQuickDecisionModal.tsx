@@ -20,6 +20,7 @@ const QcQuickDecisionModal: React.FC<QcQuickDecisionModalProps> = ({ row, onClos
   const [saving, setSaving] = useState<'approve' | 'reject' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [qcSpecs, setQcSpecs] = useState<GrnQcSpecsStored | null>(null);
+  const [qcBy, setQcBy] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -49,6 +50,11 @@ const QcQuickDecisionModal: React.FC<QcQuickDecisionModalProps> = ({ row, onClos
       await updateGRN(row.id, {
         qcStatus: verdict === 'approve' ? 'Passed' : 'Rejected',
         ...(qcSpecs ? { qcSpecs } : {}),
+        // Required later, at GRN Complete time, by the backend's grnCompletionBlockers ("QC by
+        // (inspector name) is required") — collected here so it isn't missing then. Without this,
+        // every fast-tracked GRN reached the warehouse step 7 already "Passed" but still blocked
+        // from completing, with no way back into this modal to supply it.
+        qcBy: qcBy.trim() || undefined,
         qcFastTrack: true,
       });
       onSaved();
@@ -89,10 +95,26 @@ const QcQuickDecisionModal: React.FC<QcQuickDecisionModalProps> = ({ row, onClos
             <p className="text-xs text-rose-700" role="alert">{error}</p>
           ) : null}
 
+          <div>
+            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-3" htmlFor="qc-quick-decision-by">
+              QC Analyst
+            </label>
+            <input
+              id="qc-quick-decision-by"
+              type="text"
+              value={qcBy}
+              disabled={saving !== null}
+              onChange={(e) => setQcBy(e.target.value)}
+              placeholder="e.g. P. Bhatia"
+              className="w-full rounded-lg border border-border px-3 py-2 text-xs text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand disabled:cursor-not-allowed disabled:bg-surface-3"
+            />
+          </div>
+
           <div className="flex flex-col sm:flex-row gap-2">
             <button
               type="button"
-              disabled={saving !== null}
+              disabled={saving !== null || !qcBy.trim()}
+              title={!qcBy.trim() ? 'Enter the QC Analyst name first' : undefined}
               onClick={() => void decide('approve')}
               className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-lg bg-ok text-white text-xs font-bold hover:bg-emerald-800 disabled:opacity-40"
             >

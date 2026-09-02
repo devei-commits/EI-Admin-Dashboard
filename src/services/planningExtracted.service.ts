@@ -359,6 +359,12 @@ export interface PlanningBatchAllRow extends PlanningBatchRow {
   committedDate?: string;
   bomStatus?: string;
   productId?: number | null;
+  /** PI-level packaging snapshot — fall back to this when this batch's OWN pmLines is empty (not yet
+   *  BOM-confirmed at the per-batch level). Mirrors the backend's countPlanningBatchesTouchingPm
+   *  fallback (items-involved batchCount); without it here, such a batch silently drops out of every
+   *  client-side "uses this item" list even though the server-side badge still counts it — see
+   *  batchesForItem in itemsInvolvedBatchCoverage.ts and getUsedInBatchesForItem in Planning.tsx. */
+  piPackagingMaterials?: { pack_material_id?: number; code?: string; name?: string; quantity?: number }[];
 }
 
 export async function fetchAllBatches(): Promise<PlanningBatchAllRow[]> {
@@ -368,6 +374,36 @@ export async function fetchAllBatches(): Promise<PlanningBatchAllRow[]> {
     return Array.isArray(data) ? data : [];
   } catch {
     return [];
+  }
+}
+
+/**
+ * Paginated Batches — only transfers one page of *sent* batches over the wire (server applies the
+ * same "sent === true" filter the Batches tab already filtered to client-side, plus an optional
+ * text search across batch/SO/customer/product). Use for the Batches tab's own table; keep the
+ * plain fetchAllBatches() for callers that look up one specific batch by id out of the full set
+ * (e.g. Production's rework-preview flow) — a page might not contain the batch they need.
+ */
+export async function fetchAllBatchesPage(opts: {
+  limit: number;
+  offset: number;
+  search?: string;
+}): Promise<PaginatedRows<PlanningBatchAllRow>> {
+  const params = new URLSearchParams({
+    limit: String(opts.limit),
+    offset: String(opts.offset),
+  });
+  if (opts.search?.trim()) params.set('search', opts.search.trim());
+  try {
+    const res = await api.get<PaginatedRows<PlanningBatchAllRow>>(
+      `/api/v1/planning-extracted/batches/all?${params.toString()}`
+    );
+    const data = (res as { data?: PaginatedRows<PlanningBatchAllRow> })?.data ?? res;
+    return data && Array.isArray(data.rows)
+      ? data
+      : { rows: [], total: 0, limit: opts.limit, offset: opts.offset };
+  } catch {
+    return { rows: [], total: 0, limit: opts.limit, offset: opts.offset };
   }
 }
 
@@ -475,6 +511,45 @@ export async function fetchItemsInvolved(opts?: { includeZeroRequired?: boolean 
     return Array.isArray(data) ? data : [];
   } catch {
     return [];
+  }
+}
+
+export interface PaginatedRows<T> {
+  rows: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/**
+ * Paginated Items Involved — same underlying aggregate as fetchItemsInvolved, but only transfers
+ * one page over the wire (the backend still computes the full cross-planning aggregate server-side;
+ * this only trims the response). Use for the Items Involved TABLE (Planning tab); keep the plain
+ * fetchItemsInvolved() for callers that build a lookup map over every material (e.g. Inventory.tsx)
+ * — those need the complete set, not a page.
+ */
+export async function fetchItemsInvolvedPage(opts: {
+  limit: number;
+  offset: number;
+  search?: string;
+  includeZeroRequired?: boolean;
+}): Promise<PaginatedRows<ItemsInvolvedRow>> {
+  const params = new URLSearchParams({
+    limit: String(opts.limit),
+    offset: String(opts.offset),
+  });
+  if (opts.search?.trim()) params.set('search', opts.search.trim());
+  if (opts.includeZeroRequired) params.set('includeZeroRequired', '1');
+  try {
+    const res = await api.get<PaginatedRows<ItemsInvolvedRow>>(
+      `/api/v1/planning-extracted/items-involved?${params.toString()}`
+    );
+    const data = (res as { data?: PaginatedRows<ItemsInvolvedRow> })?.data ?? res;
+    return data && Array.isArray(data.rows)
+      ? data
+      : { rows: [], total: 0, limit: opts.limit, offset: opts.offset };
+  } catch {
+    return { rows: [], total: 0, limit: opts.limit, offset: opts.offset };
   }
 }
 
