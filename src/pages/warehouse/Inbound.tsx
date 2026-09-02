@@ -846,7 +846,7 @@ const GRNDetailModal = ({
     );
   };
 
-  const persistUpdate = async (payload: { status?: string; qcStatus?: string; workflowSteps?: string[] }): Promise<GRNRecord | null> => {
+  const persistUpdate = async (payload: { status?: string; qcStatus?: string; qcFastTrack?: boolean; workflowSteps?: string[] }): Promise<GRNRecord | null> => {
     setSaveError(null);
     setSaving(true);
     try {
@@ -965,12 +965,14 @@ const GRNDetailModal = ({
     // so rack, zone and photos saved while `status` and `workflow_steps` were never touched — the
     // GRN stayed on "On Hold" with an empty stepper and the save looked like it had done nothing.
     const saved = await persistUpdate(
-      // `grn.workflowSteps`, not `currentWorkflowSteps`: the latter is a useState initializer that
-      // never re-runs, so after an earlier "Save draft" in this same modal it still holds the steps
-      // as they were on open and would drop anything saved since.
+      // `grn.workflowSteps` and `grn.qcStatus`, not `currentWorkflowSteps`/`qcStatus`: those are
+      // useState initializers that never re-run, so if QC was approved (a separate modal) after
+      // this one was already open, they'd still hold the pre-approval values — releaseFromHold
+      // would read false, the GRN would stay On Hold, and the "QC Inspection" step would never be
+      // stamped (GRN-2026-0100).
       inboundGrnRackAssignedPayload({
         status: grn.status,
-        qcStatus,
+        qcStatus: grn.qcStatus,
         workflowSteps: grn.workflowSteps,
       }),
     );
