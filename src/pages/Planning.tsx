@@ -9251,6 +9251,7 @@ const Planning = () => {
                   <table className="w-full text-xs border-collapse">
                     <thead>
                       <tr className="bg-surface-2 border-b border-border">
+                        <th scope="col" className="px-3 py-2 text-right font-semibold text-ink-2">Sr No</th>
                         <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Batch Code</th>
                         <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">SO</th>
                         <th scope="col" className="px-3 py-2 text-left font-semibold text-ink-2">Product</th>
@@ -9279,6 +9280,7 @@ const Planning = () => {
                               : `${formatQtyExact(batchQty, usedInQtyKind)} ${usedInModalItem.unit} required · SIH ${formatQtyExact(coverageSih, usedInQtyKind)} · PO ${formatQtyExact(coveragePo, usedInQtyKind)}`
                           }
                         >
+                          <td className="px-3 py-2 text-right text-ink-3">{idx + 1}</td>
                           <td className="px-3 py-2">
                             {/* Straight to THIS batch — we already hold its row, so the panel opens
                                 without a tab round-trip. The item filter follows the item clicked. */}
@@ -9326,7 +9328,7 @@ const Planning = () => {
                     </tbody>
                     <tfoot>
                       <tr className="border-t-2 border-border bg-surface-2">
-                        <td colSpan={3} className="px-3 py-2 text-right font-semibold text-ink-2">
+                        <td colSpan={4} className="px-3 py-2 text-right font-semibold text-ink-2">
                           Total — {rows.length} batch{rows.length === 1 ? '' : 'es'}
                         </td>
                         <td className="px-3 py-2 text-right font-semibold text-ink-2">

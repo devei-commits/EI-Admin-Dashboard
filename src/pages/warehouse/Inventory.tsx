@@ -1131,6 +1131,31 @@ const WarehouseInventory = () => {
       .join(' ');
   };
 
+  /**
+   * Console-logs the per-row detail from a `details=1` SIH/Inventory Excel import — skipped rows
+   * (invalid SIH, no sku/item_name match, etc.) and error rows (ambiguous match, write failure),
+   * each with its Excel row number and reason. The alert() above only ever showed aggregate counts;
+   * this is what actually lets someone find which rows to fix without re-uploading with guesses.
+   */
+  const logSihImportRowDetails = (label: string, rowLog?: Array<Record<string, unknown>>) => {
+    if (!Array.isArray(rowLog) || rowLog.length === 0) return;
+    const skipped = rowLog.filter((r) => r.action === 'skipped');
+    const errored = rowLog.filter((r) => r.action === 'error');
+    if (skipped.length > 0) {
+      console.groupCollapsed(`[${label}] Skipped rows (${skipped.length})`);
+      console.table(skipped);
+      console.groupEnd();
+    }
+    if (errored.length > 0) {
+      console.groupCollapsed(`[${label}] Error rows (${errored.length})`);
+      console.table(errored);
+      console.groupEnd();
+    }
+    if (skipped.length === 0 && errored.length === 0) {
+      console.log(`[${label}] Row log: all ${rowLog.length} row(s) processed cleanly.`, rowLog);
+    }
+  };
+
   const handleInventorySummaryExcelChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -1139,6 +1164,7 @@ const WarehouseInventory = () => {
     try {
       const res = await importInventorySummaryExcel(file, { details: true });
       alert(formatSihImportResult('Zoho Inventory Summary', res));
+      logSihImportRowDetails('Zoho Inventory Summary', res.row_log);
       await queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
       refetchWarehouseInventory();
     } catch (err) {
@@ -1162,6 +1188,7 @@ const WarehouseInventory = () => {
     try {
       const res = await importer(file, { details: true });
       alert(formatSihImportResult(label, res));
+      logSihImportRowDetails(label, res.row_log);
       await queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
       refetchWarehouseInventory();
     } catch (err) {
@@ -1197,13 +1224,17 @@ const WarehouseInventory = () => {
       }
 
       const chunks = chunkWarehouseSihRows(rows, WAREHOUSE_SIH_CHUNK_SIZE);
-      const aggregated = { rm_updated: 0, pm_updated: 0, pr_updated: 0, created: 0, skipped: 0, errors: 0 };
+      const aggregated = {
+        rm_updated: 0, pm_updated: 0, pr_updated: 0, created: 0, skipped: 0, errors: 0,
+        row_log: [] as Array<Record<string, unknown>>,
+      };
 
       for (let i = 0; i < chunks.length; i += 1) {
         const res = await postWarehouseSihExcelChunk({
           rows: chunks[i],
           chunk_index: i,
           chunk_total: chunks.length,
+          details: true,
         });
         const s = res.summary;
         aggregated.rm_updated += s?.rm_updated ?? 0;
@@ -1212,6 +1243,7 @@ const WarehouseInventory = () => {
         aggregated.created += s?.created ?? 0;
         aggregated.skipped += s?.skipped ?? 0;
         aggregated.errors += s?.errors ?? 0;
+        if (res.row_log?.length) aggregated.row_log.push(...res.row_log);
         setMainWarehouseSihPercent(res.percent_complete ?? Math.round(((i + 1) / chunks.length) * 100));
       }
 
@@ -1222,6 +1254,7 @@ const WarehouseInventory = () => {
           summary: aggregated,
         })
       );
+      logSihImportRowDetails('Main warehouse SIH', aggregated.row_log);
       await queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
       refetchWarehouseInventory();
     } catch (err) {

@@ -947,6 +947,26 @@ const OutboundDashboard = ({
     return rows;
   }, [filteredMRNs, sortColumn, sortDirection]);
 
+  /**
+   * Item-wise rows for the table: one row per line item, not one row per MRN. The MRN-level fields
+   * (Request ID, Type, Source, dates, batch no., picker, status) repeat on every line so each row
+   * stays self-contained regardless of sort/filter — a request with N materials produces N rows
+   * instead of collapsing to `displayMrnItemName`'s "first item, rest hidden" summary.
+   */
+  const itemWiseRows = useMemo(() => {
+    const out: { mrn: MRN; lineItem: MRN['lineItems'][number] | null; rowKey: string }[] = [];
+    for (const mrn of sortedMRNs) {
+      if (Array.isArray(mrn.lineItems) && mrn.lineItems.length > 0) {
+        for (const li of mrn.lineItems) {
+          out.push({ mrn, lineItem: li, rowKey: `${mrn.id}-${li.id}` });
+        }
+      } else {
+        out.push({ mrn, lineItem: null, rowKey: mrn.id });
+      }
+    }
+    return out;
+  }, [sortedMRNs]);
+
   const toggleSort = (column: MrnSortColumn) => {
     if (sortColumn === column) {
       setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -1157,12 +1177,14 @@ const OutboundDashboard = ({
               <tbody>
                 {loading ? (
                   <tr><td colSpan={9} className="px-6 py-4"><TableSkeleton rows={8} cols={9} /></td></tr>
-                ) : sortedMRNs.length === 0 ? (
+                ) : itemWiseRows.length === 0 ? (
                   <tr><td colSpan={9}><EmptyState icon={<Inbox />} title="No transfer orders found." /></td></tr>
                 ) : (
-                  sortedMRNs.map(mrn => (
+                  itemWiseRows.map(({ mrn, lineItem, rowKey }) => {
+                    const itemName = lineItem ? (lineItem.name || lineItem.itemCode || '—') : displayMrnItemName(mrn);
+                    return (
                     <tr
-                      key={mrn.id}
+                      key={rowKey}
                       className="border-b border-hairline hover:bg-surface-2 transition-colors cursor-pointer"
                       onClick={() => handleOpenPanel(mrn, 'view')}
                       role="button"
@@ -1200,9 +1222,14 @@ const OutboundDashboard = ({
                         })()}
                       </td>
                       <td className="px-6 py-4">
-                        <div className="text-ink text-sm max-w-[220px] truncate" title={displayMrnItemName(mrn)}>
-                          {displayMrnItemName(mrn)}
+                        <div className="text-ink text-sm max-w-[220px] truncate" title={itemName}>
+                          {itemName}
                         </div>
+                        {lineItem && (
+                          <div className="text-ink-3 text-[10px] mt-0.5 whitespace-nowrap">
+                            {Number(lineItem.quantity) || 0} {lineItem.unit || ''}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-ink-2 text-sm whitespace-nowrap">{formatMrnDisplayDate(mrn.createdAt)}</div>
@@ -1236,7 +1263,8 @@ const OutboundDashboard = ({
                         )}
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>

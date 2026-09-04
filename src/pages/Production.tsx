@@ -83,7 +83,6 @@ import { fetchBOMByProductId, type BOMRecord, type BOMRmLine, type BOMPmLine } f
 import { fetchBOMByBatchId, fetchBatchDispensingMuStock, fetchBatchReservationCoverage, qaApproveBatchDoc, ipqaVerifyBatch, productionConfirmBatch, type PreProductionGate } from '../services/production.service';
 import BMRPrintTemplate from '../components/orders/BMRPrintTemplate';
 import BPRPrintTemplate from '../components/orders/BPRPrintTemplate';
-import { fetchAvailablePacks, splitPack, type WarehousePack } from '../services/warehousePacks.service';
 import {
   buildDispensingPickList,
   downloadDispensingPickList,
@@ -91,7 +90,6 @@ import {
   type PickList,
 } from '../lib/dispensingPickList';
 import { downloadDispensingPickListPdf } from '../lib/dispensingPickListPdf';
-import { useAuth } from '../context/AuthContext';
 import {
   batchHasReservedMaterial,
   batchLineFullyReserved,
@@ -4875,297 +4873,6 @@ function qtyWithinMuStock(needed: unknown, atMu: unknown, kind: QtyKind): boolea
   return materialQtyLteForDispensing(needed, atMu, kind);
 }
 
-/* ──────────── PICK FROM RACK (FEFO packs) ─────────────────── */
-
-function PickFromRackModal({ line, batch, muZone, muLabel, resolvedName, onClose, onPicked }: {
-  line: DispensingItem;
-  batch: Batch;
-  /** Master name when the line carries only a code. */
-  resolvedName?: string;
-  /** Batch manufacturing site (location code, e.g. LOC-ML1) — dispensing may only consume stock here. */
-  muZone?: string;
-  /** Short label for that site (ML1 / ML2) for user-facing copy. */
-  muLabel?: string;
-  onClose: () => void;
-  onPicked: (pick: Partial<DispensingItem>) => void;
-}) {
-  const { addToast } = useToast();
-  const [packs, setPacks] = useState<WarehousePack[]>([]);
-  const [loading, setLoading] = useState(true);
-  // Keyed by row `key` (`pack-<id>` / `stock-rack-<id>`), NOT a numeric id: a pack id and a rack id
-  // can collide, which would open the split input on the wrong row.
-  const [splitKey, setSplitKey] = useState<string | null>(null);
-  const [splitQty, setSplitQty] = useState('');
-  const [busy, setBusy] = useState(false);
-  // Picks accumulated in this session, seeded from whatever the line already holds.
-  const [picks, setPicks] = useState<DispensingPick[]>(() => linePicks(line));
-
-  const pickedTotal = picks.reduce((s, p) => s + (Number(p.qty) || 0), 0);
-  const remaining = Math.max(0, roundMaterialQty(line.required - pickedTotal, 'kg'));
-  /** Quantity already taken from a rack in this session — a rack cannot be over-picked. */
-  const takenFromRack = (p: WarehousePack) =>
-    picks.filter((x) => (x.rack ?? '') === (p.rack ?? '') && (x.zone ?? '') === (p.zone ?? ''))
-      .reduce((s, x) => s + (Number(x.qty) || 0), 0);
-  const availableOnRow = (p: WarehousePack) => Math.max(0, roundMaterialQty(p.qty - takenFromRack(p), 'kg'));
-
-  useEffect(() => {
-    let cancelled = false;
-    if (line.rawMaterialId == null) { setLoading(false); return; }
-    // Scope to the batch's manufacturing site. Dispensing may only consume stock that is already
-    // there (the backend enforces the same rule), so offering packs from other sites just lets the
-    // operator pick something that will be rejected at Confirm.
-    void fetchAvailablePacks({ rawMaterialId: line.rawMaterialId, zone: muZone || null })
-      .then((rows) => { if (!cancelled) setPacks(rows); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [line.rawMaterialId, muZone]);
-
-  /**
-   * Add one rack's contribution. The dialog stays open so the operator can keep picking from other
-   * racks until the requirement is covered — closing early is what forced a single-rack pick before.
-   */
-  const addPick = (packId: number | undefined, packNo: string, qty: number, p: WarehousePack) => {
-    // A line only counts as picked when the pack has a label. Committing a blank one used to close
-    // the dialog while the row silently stayed PENDING PICK — refuse instead of no-op'ing.
-    if (!String(packNo || '').trim()) {
-      addToast('error', 'Could not label a pack for this stock — nothing was picked.');
-      return;
-    }
-    setPicks((prev) => [...prev, {
-      packId,
-      packNo,
-      qty,
-      zone: p.zone ?? '',
-      rack: p.rack ?? '',
-      vendorBatch: p.vendorBatch ?? '',
-      mfgDate: p.mfgDate ?? '',
-      expDate: p.expDate ?? '',
-    }]);
-    setSplitKey(null);
-    setSplitQty('');
-  };
-
-  /**
-   * Loose rack stock has no pack, and picking must NOT create one.
-   *
-   * An earlier version called `materialize` to mint a pack label per pick. That put the two sides
-   * out of step: the picker nets loose stock against GRN packs only, while `materialize` nets
-   * against ALL available packs — so the pack minted by the first pick made the same rack read as
-   * "No loose stock on this rack to split" on the very next click, even though the qty was untouched.
-   *
-   * Picking is a floor action, not a stock movement, so it stays client-side: record the rack and
-   * quantity, leave `packId` undefined. Consumption happens at Dispense. Loose stock carries no
-   * vendor batch or expiry, so no traceability is lost by not labelling it.
-   */
-  const addLoosePick = (p: WarehousePack, qty: number) => {
-    const where = [p.zone, p.rack].map((x) => String(x ?? '').trim()).filter(Boolean).join('/');
-    addPick(undefined, `LOOSE · ${where || 'rack'}`, qty, p);
-  };
-
-  const isLooseStock = (p: WarehousePack) => p.kind === 'stock' || p.packId == null;
-
-  /**
-   * Pick full — fill the line from this rack without typing a quantity.
-   *
-   * Capped at what the line still needs: a rack holding 6 kg against a 3 kg requirement gives 3 and
-   * leaves 3 on the rack. Taking the rack's whole quantity would send twice the required material to
-   * the dispensing station and strand the rest there. When the rack holds less than the outstanding
-   * amount it gives everything, which is the case that sends you to a second rack.
-   * Deliberate over-picking is still possible — that is what Split is for.
-   */
-  const pickFull = (p: WarehousePack) => {
-    const avail = availableOnRow(p);
-    if (avail <= 0) { addToast('error', 'Nothing left to take from this rack.'); return; }
-    if (remaining <= 1e-9) {
-      addToast('info', `${formatQtyExact(line.required, 'kg')} kg is already picked for this line — use Split to take extra.`);
-      return;
-    }
-    const qty = roundMaterialQty(Math.min(avail, remaining), 'kg');
-    if (isLooseStock(p)) { addLoosePick(p, qty); return; }
-    addPick(p.packId as number, p.packagingNo ?? '', qty, p);
-  };
-
-  /** Split — a custom quantity from this rack, so the balance can come from another one. */
-  const doSplit = async (p: WarehousePack) => {
-    const q = parseFloat(splitQty);
-    const avail = availableOnRow(p);
-    if (!(q > 0) || q > avail + 1e-9) {
-      addToast('error', `Enter a qty between 0 and ${formatQtyExact(avail, 'kg')} kg for this rack.`);
-      return;
-    }
-    if (isLooseStock(p)) { addLoosePick(p, q); return; }
-    setBusy(true);
-    try {
-      const res = await splitPack(p.packId as number, [q]);
-      const child = res.children?.[0];
-      addPick(child?.packId ?? child?.id ?? (p.packId as number), child?.packagingNo ?? p.packagingNo ?? '', q, p);
-    } catch (e) {
-      addToast('error', e instanceof Error ? e.message : 'Split failed');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const removePick = (i: number) => setPicks((prev) => prev.filter((_, idx) => idx !== i));
-
-  const confirmPicks = () => {
-    onPicked(pickSummaryFields(picks));
-    onClose();
-  };
-
-  const th = 'px-2 py-1.5 text-left font-semibold text-gray-600 whitespace-nowrap';
-  const td = 'px-2 py-1.5 whitespace-nowrap';
-
-  return (
-    <Modal
-      onClose={onClose}
-      title={`Pick from Rack — ${line.inci || line.name || resolvedName || line.code} (${line.code})`}
-      subtitle={`Batch ${batch.batchNo || batch.bmrNo} · Required ${formatQtyExact(line.required, 'kg')} kg${muLabel ? ` · at site ${muLabel} only` : ''} · FEFO (earliest expiry first)`}
-      size="xl"
-    >
-      <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs">
-        <span className="text-gray-500">Picked</span>
-        <span className="font-mono font-bold text-gray-800">
-          {formatQtyExact(pickedTotal, 'kg')} / {formatQtyExact(line.required, 'kg')} kg
-        </span>
-        {remaining > 0 ? (
-          <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-700">
-            {formatQtyExact(remaining, 'kg')} kg still to pick
-          </span>
-        ) : (
-          <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-700">requirement covered</span>
-        )}
-        <span className="ml-auto text-[10px] text-gray-400">
-          Pick full takes what this line still needs from that rack · Split takes a custom amount, so the rest can come from another rack
-        </span>
-      </div>
-
-      {picks.length > 0 && (
-        <div className="mb-3 rounded-lg border border-gray-100">
-          <div className="flex items-center gap-2 border-b border-gray-100 bg-gray-50 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-            <span>Picked so far ({picks.length})</span>
-            {picks.length > 1 && (
-              <button
-                type="button"
-                onClick={() => setPicks([])}
-                className="ml-auto text-[10px] font-semibold normal-case text-red-600 hover:underline"
-              >
-                Remove all
-              </button>
-            )}
-          </div>
-          {picks.map((pk, i) => (
-            <div key={`${pk.packNo}-${i}`} className="flex items-center gap-2 border-b border-gray-50 px-3 py-1.5 text-[11px] last:border-b-0">
-              <span className="font-mono text-gray-700">{pk.packNo}</span>
-              <span className="text-gray-400">·</span>
-              <span className="text-gray-600">{pk.zone || '—'} / {pk.rack || '—'}</span>
-              <span className="ml-auto font-mono font-semibold text-gray-800">{formatQtyExact(pk.qty, 'kg')} kg</span>
-              <button
-                type="button"
-                onClick={() => removePick(i)}
-                title={`Remove this ${formatQtyExact(pk.qty, 'kg')} kg pick — the qty goes back to ${pk.rack || 'the rack'}`}
-                className="inline-flex items-center gap-1 rounded border border-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500 hover:border-red-300 hover:bg-red-50 hover:text-red-600"
-              >
-                <X size={10} /> Remove
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {line.rawMaterialId == null ? (
-        <Tip color="amber" icon={<AlertTriangle size={14} />}>No RM master id on this line — cannot look up packs.</Tip>
-      ) : loading ? (
-        <div className="py-6 text-center text-sm text-gray-500">Loading available packs…</div>
-      ) : packs.length === 0 ? (
-        <div className="py-4 px-3 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 text-xs">
-          {muLabel
-            ? `No stock for this material at ${muLabel}, this batch's manufacturing site. Raise an MTR to move it from the warehouse first — stock at other sites cannot be dispensed to this batch.`
-            : 'No available packs for this material.'}
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-[11px] min-w-[860px]">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className={th}>FEFO</th>
-                <th className={th}>Packaging No</th>
-                <th className={th}>Zone</th>
-                <th className={th}>Rack</th>
-                <th className={th}>Vendor Batch</th>
-                <th className={th}>MFG</th>
-                <th className={th}>EXP</th>
-                <th className={`${th} text-right`}>Qty</th>
-                <th className={`${th} text-right`}>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {packs.map((p, i) => (
-                <tr key={p.key} className="border-b border-gray-100">
-                  <td className={td}>{i + 1}{i === 0 ? ' · FEFO' : ''}</td>
-                  <td className={`${td} font-mono`}>
-                    {p.packagingNo || (
-                      <span className="text-gray-400">{p.unassigned ? 'unassigned stock' : 'loose stock'}</span>
-                    )}
-                  </td>
-                  <td className={td}>{p.zone || '—'}</td>
-                  <td className={td}>
-                    {p.rack || (p.unassigned
-                      ? <span className="text-amber-600" title="At this site but not yet put away on a rack">not on a rack</span>
-                      : '—')}
-                  </td>
-                  <td className={td}>{p.vendorBatch || '—'}</td>
-                  <td className={td}>{p.mfgDate || '—'}</td>
-                  <td className={td}>{p.expDate || '—'}</td>
-                  <td className={`${td} text-right font-mono`}>
-                    {formatQtyExact(availableOnRow(p), 'kg')} {p.unit || 'kg'}
-                    {takenFromRack(p) > 0 && (
-                      <span className="ml-1 text-[10px] text-emerald-600">(−{formatQtyExact(takenFromRack(p), 'kg')} picked)</span>
-                    )}
-                  </td>
-                  <td className={`${td} text-right`}>
-                    {availableOnRow(p) <= 0 ? (
-                      <span className="text-[10px] text-gray-400">fully picked</span>
-                    ) : splitKey === p.key ? (
-                      <span className="inline-flex items-center gap-1">
-                        <input type="number" value={splitQty} min={0} max={availableOnRow(p)} step="any" placeholder="qty"
-                          onChange={(e) => setSplitQty(e.target.value)}
-                          className="w-16 px-1.5 py-1 border border-gray-200 rounded text-[11px] font-mono" />
-                        <button type="button" disabled={busy} onClick={() => void doSplit(p)} className="px-2 py-1 rounded bg-emerald-600 text-white text-[10px] font-semibold disabled:opacity-50">OK</button>
-                        <button type="button" onClick={() => { setSplitKey(null); setSplitQty(''); }} className="px-1.5 py-1 text-gray-400 text-[10px]">✕</button>
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5">
-                        <button type="button" disabled={busy} onClick={() => pickFull(p)} title={`Take ${formatQtyExact(Math.min(availableOnRow(p), remaining > 0 ? remaining : availableOnRow(p)), 'kg')} kg from this rack — what the line still needs`} className="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold disabled:opacity-50">
-                          {busy ? '…' : '🎯 Pick full'}
-                        </button>
-                        {/* Loose stock splits too — it gets labelled into a pack first. */}
-                        <button type="button" disabled={busy} title="Take part of this rack — the balance can come from another rack" onClick={() => { setSplitKey(p.key); setSplitQty(String(Math.min(remaining > 0 ? remaining : line.required, availableOnRow(p)))); }} className="px-2 py-1 rounded border border-gray-300 text-gray-700 text-[10px] disabled:opacity-50">✂ Split</button>
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100">
-        {picks.length > 0 && remaining > 0 && (
-          <span className="mr-auto text-[11px] text-amber-700">
-            Short by {formatQtyExact(remaining, 'kg')} kg — pick from another rack, or finish and dispense what you have.
-          </span>
-        )}
-        <button type="button" onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100">Cancel</button>
-        <button type="button" disabled={busy || picks.length === 0} onClick={confirmPicks}
-          className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg">
-          <CheckCircle2 size={13} /> Done — {formatQtyExact(pickedTotal, 'kg')} kg from {picks.length} rack{picks.length === 1 ? '' : 's'}
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
 /* ──────────── PICK LIST (what to collect, and a CSV of it) ─────── */
 
 function PickListModal({ list, onClose }: { list: PickList; onClose: () => void }) {
@@ -5252,116 +4959,6 @@ function PickListModal({ list, onClose }: { list: PickList; onClose: () => void 
   );
 }
 
-/* ──────────── DISPENSE CONFIRM (tolerance + leftover + split) ─── */
-
-function DispenseConfirmModal({ line, batch, resolvedName, onClose, onConfirm }: {
-  line: DispensingItem;
-  batch: Batch;
-  /** Master name when the line carries only a code. */
-  resolvedName?: string;
-  onClose: () => void;
-  onConfirm: (patch: Partial<DispensingItem>) => void;
-}) {
-  const { addToast } = useToast();
-  const { user } = useAuth();
-  const [qtyStr, setQtyStr] = useState(String(line.required));
-  const [busy, setBusy] = useState(false);
-
-  const dispensed = parseFloat(qtyStr) || 0;
-  const loTol = line.required * 0.995;
-  const hiTol = line.required * 1.005;
-  const inTolerance = dispensed >= loTol && dispensed <= hiTol;
-  // A requirement can be made up from several racks — validate against the TOTAL picked, not one pack.
-  const picks = linePicks(line);
-  const packQty = linePickedQty(line);
-  const leftover = Math.max(0, roundMaterialQty(packQty - dispensed, 'kg'));
-  const overPack = dispensed > packQty + 1e-9;
-
-  const handleConfirm = async () => {
-    if (!inTolerance || overPack) return;
-    setBusy(true);
-    try {
-      // Consume the picks in order; the one that ends up partly used is split so its leftover goes
-      // back to the rack under a new PKG-SPLIT label. Packs used in full need no split.
-      let toConsume = dispensed;
-      for (const pk of picks) {
-        if (toConsume <= 1e-9) break;
-        const take = Math.min(toConsume, pk.qty);
-        if (pk.packId != null && take > 0 && take < pk.qty - 1e-9) {
-          await splitPack(pk.packId, [roundMaterialQty(take, 'kg')]);
-        }
-        toConsume = roundMaterialQty(toConsume - take, 'kg');
-      }
-      onConfirm({
-        dispensed: roundMaterialQty(dispensed, 'kg'),
-        leftoverQty: leftover,
-        dispensedBy: user?.name || 'Operator',
-        dispensedAt: new Date().toISOString(),
-        done: true,
-        trayContainer: line.trayContainer || String(batch.mainVessel || '').trim(),
-        traySlot: line.traySlot || `${batch.batchNo || batch.bmrNo}/A`,
-      });
-      onClose();
-    } catch (e) {
-      addToast('error', e instanceof Error ? e.message : 'Dispense failed');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const kv = (label: string, value: React.ReactNode) => (
-    <div className="grid grid-cols-[160px_1fr] gap-2 py-1.5 border-b border-gray-50 text-xs">
-      <div className="text-gray-500">{label}</div>
-      <div className="text-gray-800 font-medium">{value}</div>
-    </div>
-  );
-
-  return (
-    <Modal
-      onClose={onClose}
-      title={`Dispense — ${line.inci || line.name || resolvedName || line.code} (${line.code})`}
-      subtitle={`Batch ${batch.batchNo || batch.bmrNo} · ${picks.length} rack${picks.length === 1 ? '' : 's'} picked · ${formatQtyExact(packQty, 'kg')} kg available`}
-      size="lg"
-    >
-      <div className="rounded-lg border border-gray-100 p-3">
-        {kv(picks.length === 1 ? 'Picked from Pack' : `Picked from ${picks.length} racks`, (
-          <span className="flex flex-col gap-0.5">
-            {picks.length === 0 ? '—' : picks.map((pk, i) => (
-              <span key={`${pk.packNo}-${i}`} className="font-mono text-[11px]">
-                {pk.packNo} · {formatQtyExact(pk.qty, 'kg')} kg · {pk.zone || '—'} / {pk.rack || '—'}
-              </span>
-            ))}
-            {picks.length > 1 && (
-              <span className="text-[11px] font-semibold text-gray-600">Total {formatQtyExact(packQty, 'kg')} kg</span>
-            )}
-          </span>
-        ))}
-        {kv('Vendor Batch · MFG · EXP', `${line.vendorBatch || '—'} · ${line.mfgDate || '—'} · ${line.expDate || '—'}`)}
-        {kv('Required Qty', `${formatQtyExact(line.required, 'kg')} kg`)}
-        {kv('Confirm Dispensed Qty', (
-          <span className="inline-flex items-center gap-2">
-            <input type="number" value={qtyStr} min={0} step="any" onChange={(e) => setQtyStr(e.target.value)}
-              className={`w-28 px-2 py-1 border rounded text-xs font-mono ${inTolerance && !overPack ? 'border-gray-200' : 'border-red-400 bg-red-50/40'}`} />
-            <span className="text-[10px] text-gray-400">±0.5% ({formatQtyExact(loTol, 'kg')}–{formatQtyExact(hiTol, 'kg')} kg)</span>
-          </span>
-        ))}
-        {kv('Leftover Qty (auto)', <span>{formatQtyExact(leftover, 'kg')} kg <span className="text-[10px] text-gray-400">{leftover > 0 ? '· returned to rack (new label)' : ''}</span></span>)}
-        {kv('Dispensed by', `${user?.name || 'Operator'} (auto)`)}
-        {kv('Dispensed into', `${line.traySlot || `${batch.batchNo}/A`} · ${line.trayContainer || batch.mainVessel || 'SS Container'}`)}
-      </div>
-      {overPack ? <Tip color="amber" icon={<AlertTriangle size={14} />}>Dispensed qty exceeds what was picked ({formatQtyExact(packQty, 'kg')} kg across {picks.length} rack{picks.length === 1 ? '' : 's'}). Pick more from another rack first.</Tip>
-        : !inTolerance ? <Tip color="amber" icon={<AlertTriangle size={14} />}>Dispensed qty is out of the ±0.5% tolerance.</Tip> : null}
-      <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-gray-100">
-        <button type="button" onClick={onClose} className="px-4 py-2 text-xs text-gray-500 rounded-lg hover:bg-gray-100">Cancel</button>
-        <button type="button" onClick={handleConfirm} disabled={busy || !inTolerance || overPack}
-          className="inline-flex items-center gap-1.5 px-5 py-2 text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-lg">
-          <CheckCircle2 size={13} /> Complete Dispense
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
 function DispensingModal({ batch, type, atMuZoneByCode, scheduledMuZone, nameByCode, onClose, onSave, onReschedule }: {
   batch: Batch;
   type: 'rm' | 'pm';
@@ -5391,30 +4988,11 @@ function DispensingModal({ batch, type, atMuZoneByCode, scheduledMuZone, nameByC
   const muBucketLabel = muBucketFromScheduledZone(muZone) === 'ml2' ? 'ML2' : 'ML1';
   const [muStockByCode, setMuStockByCode] = useState<Record<string, string>>({});
   const [muStockLoading, setMuStockLoading] = useState(false);
-  // RM two-stage pick → dispense (Phase 1).
+  // RM and PM dispensing share one flow: weigh/count the line and mark it Done or Short — no
+  // separate rack-pick step for RM. (Rack-level picks recorded before this change still display
+  // via `linePicks`/`lineIsPicked` wherever historical data is shown, e.g. the BMR printout.)
   const isRm = type === 'rm';
-  const [pickForIdx, setPickForIdx] = useState<number | null>(null);
-  const [dispenseForIdx, setDispenseForIdx] = useState<number | null>(null);
   const [showPickList, setShowPickList] = useState(false);
-  const applyLinePatch = (idx: number, patch: Partial<DispensingItem>) =>
-    setLocalItems(prev => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
-
-  /**
-   * Drop every pick on a line so it returns to Pending pick. Clears BOTH the picks array and the
-   * legacy single-pick summary fields — leaving either behind would keep the row looking picked.
-   * Refuses on a dispensed line: that would erase the provenance of material already consumed.
-   */
-  const clearLinePicks = (idx: number) => {
-    const line = localItems[idx];
-    if (!line) return;
-    if (line.done || (Number(line.dispensed) || 0) > 0) {
-      addToast('error', `${line.code} is already dispensed — its pick cannot be removed.`);
-      return;
-    }
-    applyLinePatch(idx, pickSummaryFields([]));
-  };
-  const pickedCount = isRm ? localItems.filter(r => lineIsPicked(r) && !r.done).length : 0;
-  const pendingPickCount = isRm ? localItems.filter(r => !lineIsPicked(r) && !r.done).length : 0;
   /** Built from the live rows, so the sheet always matches what the operator is looking at. */
   const pickList = useMemo(
     () => buildDispensingPickList(
@@ -5434,7 +5012,6 @@ function DispensingModal({ batch, type, atMuZoneByCode, scheduledMuZone, nameByC
     [batch, localItems, type, muZone, muBucketLabel, nameByCode],
   );
 
-  const shiftLeadName = batch.shiftLeadBMR || '';
   /** BPR cannot move to Filling until BMR bulk QC is released (cleared or approved flag). */
   const bprBlockedByBmr = type === 'pm' && !bmrBulkQcReleased(batch);
 
@@ -5600,8 +5177,9 @@ function DispensingModal({ batch, type, atMuZoneByCode, scheduledMuZone, nameByC
       if (!it.done) continue;
       const qty = Number(it.dispensed) || 0;
       if (qty <= 0) continue;
-      // RM pack-picked lines were already tolerance-validated in DispenseConfirmModal (and consume from
-      // the picked pack, not the aggregate MU stock) — skip the legacy below-required / MU-stock checks.
+      // Legacy: a line picked and dispensed under the old rack-pick flow (before RM and PM shared
+      // one dispense step) was already tolerance-validated against its picked pack, not the
+      // aggregate MU stock — skip the below-required / MU-stock checks for those historical rows.
       if (type === 'rm' && lineIsPicked(it)) continue;
       const err = validateDispenseLine(it, qty);
       if (err) return err;
@@ -5727,12 +5305,6 @@ function DispensingModal({ batch, type, atMuZoneByCode, scheduledMuZone, nameByC
         </div>
       )}
       <div className="mb-4">
-        {isRm ? (
-          <div className="mb-1.5 text-[11px] text-gray-600">
-            <b>{total}</b> items · <b className="text-emerald-600">{done} dispensed</b> · <b className="text-blue-600">{pickedCount} picked</b> · <b className="text-amber-600">{pendingPickCount} pending pick</b>
-            {shiftLeadName ? <> · assigned to <b>{shiftLeadName}</b></> : null}
-          </div>
-        ) : null}
         <div className="flex items-center justify-between gap-2 text-xs text-ink-3 mb-1.5">
           <span className="inline-flex items-center gap-2">
             Progress
@@ -5785,71 +5357,6 @@ function DispensingModal({ batch, type, atMuZoneByCode, scheduledMuZone, nameByC
                 <div className="inline-flex items-center gap-1 text-xs font-mono text-ok font-semibold">
                   <Check size={12} /> {formatQtyExact(r.dispensed, qtyKind)} {unit}
                   {isRm && (r.leftoverQty ?? 0) > 0 ? <span className="text-[10px] text-gray-400">({formatQtyExact(r.leftoverQty ?? 0, 'kg')} kg leftover)</span> : null}
-                </div>
-              ) : isRm ? (
-                <div className="flex items-center gap-2">
-                  {lineIsPicked(r) ? (
-                    <>
-                      {(() => {
-                        // Picking can span several racks, so show how much of the requirement is
-                        // actually covered — a short pick would otherwise look ready to dispense.
-                        const got = linePickedQty(r);
-                        const short = got < r.required - 1e-9;
-                        return (
-                          <span
-                            title={linePicks(r).map((pk) => `${pk.packNo} · ${formatQtyExact(pk.qty, 'kg')} kg · ${pk.zone || '—'}/${pk.rack || '—'}`).join('\n')}
-                            className={`text-[10px] rounded-full px-2 py-0.5 font-semibold ${short ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}
-                          >
-                            PICKED {formatQtyExact(got, 'kg')}/{formatQtyExact(r.required, 'kg')}
-                            {linePicks(r).length > 1 ? ` · ${linePicks(r).length} racks` : ''}
-                          </span>
-                        );
-                      })()}
-                      <button type="button" onClick={() => setPickForIdx(idx)} title="Add or remove racks for this line" className="inline-flex items-center gap-1 px-2 py-1.5 text-[10px] font-bold rounded-lg border border-emerald-500 text-emerald-700 hover:bg-emerald-50">🎯 Edit picks</button>
-                      {/* Undo the whole pick in one click — picking is a floor decision, and the
-                          operator must be able to put it back without going through the dialog. */}
-                      <button
-                        type="button"
-                        onClick={() => clearLinePicks(idx)}
-                        title="Remove this pick and return the line to Pending pick"
-                        className="inline-flex items-center gap-1 px-2 py-1.5 text-[10px] font-bold rounded-lg border border-border text-ink-2 hover:bg-surface-2"
-                      >
-                        <X size={11} /> Remove pick
-                      </button>
-                      <button type="button" onClick={() => setDispenseForIdx(idx)} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg bg-purple-600 hover:bg-purple-700 text-white">🧪 Dispense</button>
-                    </>
-                  ) : isDispensingLineShort(r) ? (
-                    // Nothing to pick from at this site — offering "🎯 Pick" here just sent the
-                    // operator into a rack picker with insufficient stock. Show the same shortage
-                    // warning the PM Dispense button already uses instead, so the fix (MTR to this
-                    // site) is stated up front rather than discovered after opening the dialog.
-                    <span
-                      title={`Short ${formatQtyShortage(
-                        calcShortageQtyForKind(
-                          materialQtyToNum(muQtyStrForCode(r.code)),
-                          materialQtyToNum(r.required),
-                          qtyKind,
-                        ),
-                        qtyKind,
-                      )} at ${muZone || 'this site'} — MTR to this site first`}
-                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg bg-warn text-white"
-                    >
-                      <AlertTriangle size={10} aria-hidden />
-                      Short {formatQtyShortage(
-                        calcShortageQtyForKind(
-                          materialQtyToNum(muQtyStrForCode(r.code)),
-                          materialQtyToNum(r.required),
-                          qtyKind,
-                        ),
-                        qtyKind,
-                      )}
-                    </span>
-                  ) : (
-                    <>
-                      <span className="text-[10px] rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 font-semibold">PENDING PICK</span>
-                      <button type="button" disabled={r.rawMaterialId == null} title={r.rawMaterialId == null ? 'No RM master id on this line' : undefined} onClick={() => setPickForIdx(idx)} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[10px] font-bold rounded-lg bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-white">🎯 Pick</button>
-                    </>
-                  )}
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
@@ -5927,26 +5434,6 @@ function DispensingModal({ batch, type, atMuZoneByCode, scheduledMuZone, nameByC
         )}
       </div>
       {showPickList && <PickListModal list={pickList} onClose={() => setShowPickList(false)} />}
-      {isRm && pickForIdx != null && localItems[pickForIdx] && (
-        <PickFromRackModal
-          line={localItems[pickForIdx]}
-          batch={batch}
-          muZone={muZone}
-          muLabel={muBucketLabel}
-          resolvedName={nameByCode?.[localItems[pickForIdx].code]}
-          onClose={() => setPickForIdx(null)}
-          onPicked={(pick) => applyLinePatch(pickForIdx, pick)}
-        />
-      )}
-      {isRm && dispenseForIdx != null && localItems[dispenseForIdx] && (
-        <DispenseConfirmModal
-          line={localItems[dispenseForIdx]}
-          batch={batch}
-          resolvedName={nameByCode?.[localItems[dispenseForIdx].code]}
-          onClose={() => setDispenseForIdx(null)}
-          onConfirm={(patch) => applyLinePatch(dispenseForIdx, patch)}
-        />
-      )}
     </Modal>
   );
 }
@@ -11000,8 +10487,8 @@ function ProductionSidebar({ active, onChange, mobileOpen, onMobileClose, navIte
   );
 }
 
-function TopHeader({ batches, onMenuClick, onSchedule }: {
-  batches: Batch[]; onMenuClick: () => void; onSchedule: () => void;
+function TopHeader({ batches, isLoading, onMenuClick, onSchedule }: {
+  batches: Batch[]; isLoading?: boolean; onMenuClick: () => void; onSchedule: () => void;
 }) {
   const statusCounts = countProductionStatusBuckets(batches, (b) => ({
     effectiveRmConnected: Boolean(b.rmConnected),
@@ -11026,11 +10513,17 @@ function TopHeader({ batches, onMenuClick, onSchedule }: {
         <span className="text-[11px] text-ink-4 font-medium tracking-wide">Manufacturing Management</span>
       </div>
       <div className="flex items-center gap-1.5 ml-1 md:ml-3 overflow-x-auto">
-        {statusBadges.map((badge) => (
-          <Badge key={badge.label} className={`${badge.className} whitespace-nowrap`}>
-            {badge.label} · {badge.count}
-          </Badge>
-        ))}
+        {isLoading ? (
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-ink-3 whitespace-nowrap">
+            <Loader2 size={12} className="animate-spin text-brand" aria-hidden /> Loading batches…
+          </span>
+        ) : (
+          statusBadges.map((badge) => (
+            <Badge key={badge.label} className={`${badge.className} whitespace-nowrap`}>
+              {badge.label} · {badge.count}
+            </Badge>
+          ))
+        )}
       </div>
       <div className="ml-auto flex items-center gap-3">
         <span className="hidden sm:block text-[11px] text-ink-4 font-medium">{weekLabel}</span>
@@ -11089,6 +10582,10 @@ const Production = () => {
   }, [setSearchParams]);
 
   const [state, setState] = useState<ProductionState>(defaultState);
+  // True until the initial batches/equipment/team/inventory fetch settles. Every section below reads
+  // off `state.batches`, which starts empty, so without this the whole dashboard (header badges,
+  // batch counts, "0 dispensed" etc.) briefly renders as if there were genuinely zero of everything.
+  const [initialLoading, setInitialLoading] = useState(true);
   const [whInventory, setWhInventory] = useState<WarehouseInventoryRow[]>([]);
   const [outboundMrns, setOutboundMrns] = useState<MRNRecordFromApi[]>([]);
   const [reservedItems, setReservedItems] = useState<ProductionReservedItemRow[]>([]);
@@ -11198,7 +10695,8 @@ const Production = () => {
       })
       .catch(() => {
         setState(defaultState());
-      });
+      })
+      .finally(() => setInitialLoading(false));
   }, []);
 
   useEffect(() => {
@@ -11829,10 +11327,19 @@ const Production = () => {
 
   return (
     <div className="flex flex-col h-screen bg-canvas text-ink overflow-hidden">
-      <TopHeader batches={state.batches} onMenuClick={() => setMobileSidebarOpen(true)} onSchedule={openScheduleWizard} />
+      <TopHeader batches={state.batches} isLoading={initialLoading} onMenuClick={() => setMobileSidebarOpen(true)} onSchedule={openScheduleWizard} />
       <div className="flex flex-1 overflow-hidden">
         <ProductionSidebar active={activeSection} onChange={setSection} mobileOpen={mobileSidebarOpen} onMobileClose={() => setMobileSidebarOpen(false)} navItems={visibleNavItems} />
-        <main className="flex-1 overflow-hidden flex flex-col bg-surface">{renderContent()}</main>
+        <main className="flex-1 overflow-hidden flex flex-col bg-surface">
+          {initialLoading ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 text-ink-3">
+              <Loader2 className="h-8 w-8 text-brand animate-spin" aria-hidden />
+              <p className="text-sm font-medium">Loading production data…</p>
+            </div>
+          ) : (
+            renderContent()
+          )}
+        </main>
       </div>
 
       {/* MODALS */}
