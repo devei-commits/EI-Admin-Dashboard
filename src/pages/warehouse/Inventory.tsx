@@ -1126,6 +1126,7 @@ const WarehouseInventory = () => {
       `RM: ${s?.rm_updated ?? 0}, PM: ${s?.pm_updated ?? 0}, PR: ${s?.pr_updated ?? 0} updated`,
       s?.created ? `(${s.created} new warehouse rows)` : '',
       `Skipped: ${s?.skipped ?? 0}, Errors: ${s?.errors ?? 0}`,
+      (s?.skipped || s?.errors) ? '— see browser console for per-row detail.' : '',
     ]
       .filter(Boolean)
       .join(' ');
@@ -1134,25 +1135,32 @@ const WarehouseInventory = () => {
   /**
    * Console-logs the per-row detail from a `details=1` SIH/Inventory Excel import — skipped rows
    * (invalid SIH, no sku/item_name match, etc.) and error rows (ambiguous match, write failure),
-   * each with its Excel row number and reason. The alert() above only ever showed aggregate counts;
-   * this is what actually lets someone find which rows to fix without re-uploading with guesses.
+   * each with its Excel row number and reason. The alert() only ever showed aggregate counts; this
+   * is what actually lets someone find which rows to fix without re-uploading with guesses.
+   *
+   * Called BEFORE the summary alert() — alert() blocks the JS thread until dismissed, so anything
+   * logged after it only appears once the popup is closed. Logging first means it's already sitting
+   * in the console the moment the alert shows up, not something you have to remember to check after.
+   * Uses console.error/console.warn (not plain console.log) for the summary lines specifically so
+   * they still show if devtools' console is filtered to Errors/Warnings only.
    */
   const logSihImportRowDetails = (label: string, rowLog?: Array<Record<string, unknown>>) => {
-    if (!Array.isArray(rowLog) || rowLog.length === 0) return;
+    if (!Array.isArray(rowLog) || rowLog.length === 0) {
+      console.log(`[${label}] No row-level detail returned (row_log empty/missing).`);
+      return;
+    }
     const skipped = rowLog.filter((r) => r.action === 'skipped');
     const errored = rowLog.filter((r) => r.action === 'error');
     if (skipped.length > 0) {
-      console.groupCollapsed(`[${label}] Skipped rows (${skipped.length})`);
+      console.warn(`[${label}] ${skipped.length} row(s) SKIPPED — see table below`);
       console.table(skipped);
-      console.groupEnd();
     }
     if (errored.length > 0) {
-      console.groupCollapsed(`[${label}] Error rows (${errored.length})`);
+      console.error(`[${label}] ${errored.length} row(s) ERRORED — see table below`);
       console.table(errored);
-      console.groupEnd();
     }
     if (skipped.length === 0 && errored.length === 0) {
-      console.log(`[${label}] Row log: all ${rowLog.length} row(s) processed cleanly.`, rowLog);
+      console.log(`[${label}] All ${rowLog.length} row(s) processed cleanly.`, rowLog);
     }
   };
 
@@ -1163,8 +1171,8 @@ const WarehouseInventory = () => {
     setImportingInventoryExcel(true);
     try {
       const res = await importInventorySummaryExcel(file, { details: true });
-      alert(formatSihImportResult('Zoho Inventory Summary', res));
       logSihImportRowDetails('Zoho Inventory Summary', res.row_log);
+      alert(formatSihImportResult('Zoho Inventory Summary', res));
       await queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
       refetchWarehouseInventory();
     } catch (err) {
@@ -1187,8 +1195,8 @@ const WarehouseInventory = () => {
     setImportingSihBucket(bucket);
     try {
       const res = await importer(file, { details: true });
-      alert(formatSihImportResult(label, res));
       logSihImportRowDetails(label, res.row_log);
+      alert(formatSihImportResult(label, res));
       await queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
       refetchWarehouseInventory();
     } catch (err) {
@@ -1247,6 +1255,7 @@ const WarehouseInventory = () => {
         setMainWarehouseSihPercent(res.percent_complete ?? Math.round(((i + 1) / chunks.length) * 100));
       }
 
+      logSihImportRowDetails('Main warehouse SIH', aggregated.row_log);
       alert(
         formatSihImportResult('Main warehouse SIH', {
           sheet_name: sheetName,
@@ -1254,7 +1263,6 @@ const WarehouseInventory = () => {
           summary: aggregated,
         })
       );
-      logSihImportRowDetails('Main warehouse SIH', aggregated.row_log);
       await queryClient.invalidateQueries({ queryKey: queryKeys.warehouseInventory });
       refetchWarehouseInventory();
     } catch (err) {

@@ -4,6 +4,7 @@ import { useToast } from '../context/ToastContext';
 import { Plus, Trash2, Pencil, Check, ArrowUpFromLine } from 'lucide-react';
 import MasterFormBase from '../components/MasterFormBase';
 import { MasterSubmitPreviewModal } from '../components/masters/MasterSubmitPreviewModal';
+import { MasterSaveSuccessModal, type MasterSaveSuccessRow } from '../components/masters/MasterSaveSuccessModal';
 import { PR_PREVIEW_SECTIONS } from '../constants/masterSubmitPreviewFields';
 import { buildMasterPreviewSections } from '../utils/masterSubmitPreview';
 import {
@@ -894,6 +895,12 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
   const [pendingApprovalIntentStatus, setPendingApprovalIntentStatus] = useState<string | null>(null);
   const [submitConfirming, setSubmitConfirming] = useState(false);
   const [draftSaving, setDraftSaving] = useState(false);
+  // Same "registered successfully" popup RM/PM show after Confirm & submit — previously PR only got
+  // a small toast here.
+  const [saveSuccessOpen, setSaveSuccessOpen] = useState(false);
+  const [saveSuccessCode, setSaveSuccessCode] = useState('');
+  const [saveSuccessRows, setSaveSuccessRows] = useState<MasterSaveSuccessRow[]>([]);
+  const [saveSuccessIsEdit, setSaveSuccessIsEdit] = useState(false);
   const [editApprovalStageAssignees, setEditApprovalStageAssignees] =
     useState<MasterApprovalStageAssignees>(emptyStageAssignees);
   const [editApprovalTeamPending, setEditApprovalTeamPending] =
@@ -2164,8 +2171,24 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         }
         const product = res.data.product as Record<string, unknown>;
         const code = String(product.product_code ?? product.productCode ?? '').trim();
-        addToast('success', code ? `Draft saved (${code}).` : 'Draft saved.');
-        exitPrForm();
+        const newId = String(product.product_id ?? product.productId ?? '');
+        if (newId) setLocalProductId(newId);
+        // Same success popup as Confirm & submit — a new PR draft still gets a generated SKU right
+        // away, so it deserves the same "here's your code" moment, not just a toast.
+        setSaveSuccessIsEdit(false);
+        setSaveSuccessCode(code);
+        setSaveSuccessRows([
+          { label: 'Product name', value: formData.productName || '' },
+          {
+            label: 'Category',
+            value: [formData.category, formData.prSubCategory].filter(Boolean).join(' / '),
+          },
+          { label: 'Client / Brand', value: formData.brandClient || '' },
+          { label: 'Product form', value: formData.productForm || '' },
+          { label: 'Pack configuration', value: formData.packConfiguration || '' },
+          { label: 'Approval status', value: formData.masterApprovalStatus || 'Draft' },
+        ]);
+        setSaveSuccessOpen(true);
       }
     } catch (err) {
       console.error(err);
@@ -2227,6 +2250,13 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
     if (onClose) onClose();
     else navigate('/bom');
   }, [onSaved, onClose, navigate]);
+
+  const closeSaveSuccessAndExit = () => {
+    setSaveSuccessOpen(false);
+    setSaveSuccessCode('');
+    setSaveSuccessRows([]);
+    exitPrForm();
+  };
 
   const handleConfirmSubmit = async (comment: string) => {
     const pending = pendingPrSubmit;
@@ -2331,17 +2361,20 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
       setPendingApprovalIntentStatus(null);
 
       const isCreate = pending.mode === 'create';
-      if (isCreate) {
-        addToast(
-          'success',
-          savedProductCode
-            ? `Product registered (${savedProductCode}). Status: ${approvalStatus}`
-            : `Product registered. Status: ${approvalStatus}`
-        );
-      } else {
-        addToast('success', `Product updated. Status: ${approvalStatus}`);
-      }
-      exitPrForm();
+      setSaveSuccessIsEdit(!isCreate);
+      setSaveSuccessCode(savedProductCode);
+      setSaveSuccessRows([
+        { label: 'Product name', value: formData.productName || '' },
+        {
+          label: 'Category',
+          value: [formData.category, formData.prSubCategory].filter(Boolean).join(' / '),
+        },
+        { label: 'Client / Brand', value: formData.brandClient || '' },
+        { label: 'Product form', value: formData.productForm || '' },
+        { label: 'Pack configuration', value: formData.packConfiguration || '' },
+        { label: 'Approval status', value: approvalStatus },
+      ]);
+      setSaveSuccessOpen(true);
     } catch (err) {
       console.error(err);
       addToast('error', err instanceof Error ? err.message : 'Save failed');
@@ -4272,6 +4305,19 @@ const BOMForm: React.FC<BOMFormProps> = ({ productId: productIdProp, onClose, on
         confirming={submitConfirming}
         isEdit
         commentPlaceholder="Why is this being sent back? (optional)"
+      />
+      <MasterSaveSuccessModal
+        isOpen={saveSuccessOpen}
+        onClose={closeSaveSuccessAndExit}
+        title={saveSuccessIsEdit ? 'Product updated' : 'Product registered'}
+        subtitle={
+          saveSuccessIsEdit
+            ? 'Changes are saved. Internal code cannot be changed here.'
+            : 'Your product is registered. Details and the generated internal code are below.'
+        }
+        generatedCode={saveSuccessCode}
+        codeLabel={saveSuccessIsEdit ? 'Internal PR code (SKU)' : 'Generated internal code (SKU)'}
+        rows={saveSuccessRows}
       />
       </MasterCustomFieldsProvider>
   );
