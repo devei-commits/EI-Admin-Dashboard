@@ -72,6 +72,7 @@ import {
 import {
   createMRN, fetchMRNList, fetchMRNById, updateMRN, getApiErrorMessage, fetchMRNAssignablePickers, generateMRNLabels, fetchMRNLocationHistory,
   mrnSourceDocFromApi,
+  isOutboundTransferSource,
   formatMrnDisplayDate,
   mrnDisplayPrName,
   mrnDisplayExpectedDate,
@@ -90,6 +91,8 @@ import {
   type PickList,
 } from '../lib/dispensingPickList';
 import { downloadDispensingPickListPdf } from '../lib/dispensingPickListPdf';
+import { buildBatchDispenseSheet } from '../lib/batchDispenseSheet';
+import { printBatchDispenseSheetPdf } from '../lib/batchDispenseSheetPdf';
 import {
   batchHasReservedMaterial,
   batchLineFullyReserved,
@@ -6898,7 +6901,7 @@ function zoneLabelInAreas(areas: FacilityAreaDTO[], zoneCode: string): string {
   return zc;
 }
 
-function MRNDetailModal({
+export function MRNDetailModal({
   mrn: mrnProp,
   assignablePickers = [],
   onClose,
@@ -6985,7 +6988,13 @@ function MRNDetailModal({
     [mrn.lineItems, mrn.lineTransferStatus],
   );
 
-  const isOutboundMtr = mrn.source === 'MTR' && !mrn.isInboundFromMu;
+  // Was `mrn.source === 'MTR'` only — a batchless Request Transfer (source 'TRQ') read as false
+  // here, which silently disabled the receiving flow for it: hasInTransitForReceive /
+  // hasReceivedLinesToComplete / canCompleteOutboundTransfer all gated on this stayed false, so
+  // Verify/Received-at-MU and Mark Succeeded had nothing to act on (status never actually
+  // persisted), and mtrMuDestLocked never locked the zone chosen at request time — leaving Area,
+  // Zone AND Rack all open for re-picking instead of just Rack. See isOutboundTransferSource().
+  const isOutboundMtr = isOutboundTransferSource(mrn.source) && !mrn.isInboundFromMu;
 
   const [recvLinePick, setRecvLinePick] = useState<Record<string, boolean>>({});
   const [completeLinePick, setCompleteLinePick] = useState<Record<string, boolean>>({});
@@ -8102,6 +8111,8 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
 }) {
   const [tab, setTab] = useState('overview');
   const [mrnDetailTarget, setMrnDetailTarget] = useState<MRNRecordFromApi | null>(null);
+  const { addToast } = useToast();
+  const [printingSheet, setPrintingSheet] = useState(false);
   const { data: batchMrnPickers = [] } = useQuery({
     queryKey: ['mrn-assignable-pickers', 'batch-detail'],
     queryFn: fetchMRNAssignablePickers,
@@ -8133,6 +8144,45 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
   // Shared with ScheduleModal — see useBatchBomItems. Both screens must compute a batch's
   // requirement the same way, so the BOM load lives in one place.
   const { bomRmItems, bomPmItems, bomLoading } = useBatchBomItems(batch);
+
+  // Header "Print" — an RM + PM dispense sheet: requirement vs *live* at-site stock (same feed the
+  // dispensing tray reads), so a row this flags "Short" is one the tray would refuse right now too.
+  // Falls back to the BOM requirement when dispensing hasn't started yet, same as the RM & PM
+  // Availability tab above.
+  const handlePrintDispenseSheet = async () => {
+    if (printingSheet) return;
+    setPrintingSheet(true);
+    try {
+      const muZone = String(batch.scheduledMuZone || '').trim();
+      let rmAtSite: Record<string, string> = {};
+      let pmAtSite: Record<string, string> = {};
+      if (detailBatchPk != null && muZone) {
+        const res = await fetchBatchDispensingMuStock(detailBatchPk);
+        if (res.success) {
+          rmAtSite = res.rmByCode ?? {};
+          pmAtSite = res.pmByCode ?? {};
+        } else if (res.error) {
+          addToast('error', res.error);
+        }
+      }
+      const rmLines = batch.dispensingRM.length > 0 ? batch.dispensingRM : bomRmItems;
+      const pmLines = batch.dispensingPM.length > 0 ? batch.dispensingPM : bomPmItems;
+      const siteLabel = muZone ? `${muZone} (${muBucketFromScheduledZone(muZone) === 'ml2' ? 'ML2' : 'ML1'})` : '';
+      const sheets = [
+        buildBatchDispenseSheet(batch, rmLines, rmAtSite, 'RM', { siteLabel }),
+        buildBatchDispenseSheet(batch, pmLines, pmAtSite, 'PM', { siteLabel }),
+      ].filter((s) => s.rows.length > 0);
+      if (sheets.length === 0) {
+        addToast('error', 'No RM/PM requirement to print for this batch yet.');
+        return;
+      }
+      printBatchDispenseSheetPdf(sheets);
+    } catch {
+      addToast('error', 'Could not generate the dispense sheet.');
+    } finally {
+      setPrintingSheet(false);
+    }
+  };
 
   const openRmMtrForBatch = useMemo(() => findOpenRmMtrForBatch(batch.bmrNo, outboundMrns), [batch.bmrNo, outboundMrns]);
   const anyRmMtrForBatch = useMemo(() => findAnyRmMtrForBatch(batch.bmrNo, outboundMrns), [batch.bmrNo, outboundMrns]);
@@ -8188,7 +8238,15 @@ function BatchDetailModal({ batch, team, stockRM, stockPM, reservedRM, reservedP
             </div>
           </div>
           <div className="flex gap-1.5 items-center shrink-0">
-            <button type="button" onClick={() => { /* print */ }} className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-ink-2 hover:bg-surface-3 rounded-lg transition-colors">Print</button>
+            <button
+              type="button"
+              onClick={handlePrintDispenseSheet}
+              disabled={printingSheet}
+              title="RM + PM dispense sheet — required vs at-site stock, with shortages flagged"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-ink-2 hover:bg-surface-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {printingSheet ? 'Printing…' : 'Print Dispense Sheet'}
+            </button>
             <button type="button" onClick={onClose} className="inline-flex items-center justify-center w-8 h-8 text-ink-3 hover:bg-surface-3 rounded-lg transition-colors" aria-label="Close">×</button>
           </div>
         </div>

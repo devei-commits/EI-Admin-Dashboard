@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { fetchMRNList, fetchMRNAssignablePickers, updateMRN, getApiErrorMessage, type MRNRecordFromApi, type AssignablePicker, type MtrLineTransferPhase, type GeneratedMRNLabel, mrnSourceDocFromApi, formatMrnDisplayDate, mrnDisplayPrName, mrnDisplayExpectedDate, mrnDisplayBatchNumber } from '../../services/mrn.service';
+import { fetchMRNList, fetchMRNById, fetchMRNAssignablePickers, updateMRN, getApiErrorMessage, type MRNRecordFromApi, type AssignablePicker, type MtrLineTransferPhase, type GeneratedMRNLabel, mrnSourceDocFromApi, formatMrnDisplayDate, mrnDisplayPrName, mrnDisplayExpectedDate, mrnDisplayBatchNumber } from '../../services/mrn.service';
+import { MRNDetailModal } from '../Production';
 import TransferPickModal, { type TransferPickLine, type TransferLabel } from './transfers/TransferPickModal';
 import TransferDispatchModal, { type DispatchDetails, type DispatchLabelState } from './transfers/TransferDispatchModal';
 import TransferPickSplitModal, { type PickedCartEntry } from './transfers/TransferPickSplitModal';
@@ -291,6 +292,24 @@ const OutboundDashboard = ({
   const [productionAreas, setProductionAreas] = useState<FacilityAreaDTO[]>([]);
   const [warehouseAreas, setWarehouseAreas] = useState<FacilityAreaDTO[]>([]);
   const [selectedMlLocation, setSelectedMlLocation] = useState('');
+  // Batchless transfer requests (Request Transfer / TRQ — no BMR/BPR) never appear in any batch's
+  // "Transfers" tab in Production, so once one reaches In Transit / Received at MU there is no
+  // screen anywhere else that can finish it. Reuse Production's own MRNDetailModal (Verify/Received
+  // at MU -> Mark Succeeded) right from this row instead of leaving it stuck.
+  const [batchlessReceiveTarget, setBatchlessReceiveTarget] = useState<MRNRecordFromApi | null>(null);
+  const [receiveLoadingId, setReceiveLoadingId] = useState<string | null>(null);
+
+  const openBatchlessReceive = async (mrn: MRN) => {
+    setReceiveLoadingId(mrn.id);
+    try {
+      const full = await fetchMRNById(mrn.id);
+      setBatchlessReceiveTarget(full);
+    } catch (e) {
+      showToast(getApiErrorMessage(e) || 'Could not open this transfer.', 'error');
+    } finally {
+      setReceiveLoadingId(null);
+    }
+  };
 
   const zoneLabelInAreas = (areas: FacilityAreaDTO[], zoneCode: string) => {
     const zc = (zoneCode || '').trim();
@@ -1261,6 +1280,17 @@ const OutboundDashboard = ({
                             🏷️ Generate Labels &amp; Pick
                           </button>
                         )}
+                        {!mrn.bmrNo && !mrn.bprNo && (mrn.status === 'In Transit' || mrn.status === 'Received at MU') && (
+                          <button
+                            type="button"
+                            onClick={() => openBatchlessReceive(mrn)}
+                            disabled={receiveLoadingId === mrn.id}
+                            title="No production batch on this request — verify receipt and complete it here."
+                            className="mt-1.5 block w-full whitespace-nowrap rounded-md bg-brand px-2 py-1 text-[10px] font-semibold text-white hover:bg-brand-press disabled:opacity-60 disabled:cursor-not-allowed"
+                          >
+                            {receiveLoadingId === mrn.id ? 'Opening…' : '▶ Receive / Manage'}
+                          </button>
+                        )}
                       </td>
                     </tr>
                     );
@@ -1868,6 +1898,22 @@ const OutboundDashboard = ({
           }}
         />
       ) : null}
+      {batchlessReceiveTarget && (
+        <MRNDetailModal
+          mrn={batchlessReceiveTarget}
+          assignablePickers={assignablePickers}
+          onClose={() => setBatchlessReceiveTarget(null)}
+          onSave={(updated) => {
+            setMrnData((prev) => prev.map((m) => (m.id === updated.id ? mapApiToMRN(updated) : m)));
+            setBatchlessReceiveTarget(updated);
+            const st = String(updated.status || '').trim().toLowerCase();
+            if (st === 'succeeded' || st === 'completed') {
+              showToast(`Transfer ${updated.mrnNo} completed.`);
+              setBatchlessReceiveTarget(null);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

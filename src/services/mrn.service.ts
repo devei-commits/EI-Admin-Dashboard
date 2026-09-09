@@ -91,6 +91,19 @@ export function inferMtrKindFromMrnLines(
   return null;
 }
 
+/**
+ * Both production transfers (MTR) and ad-hoc warehouse transfer requests (TRQ, raised via
+ * Request Transfer — no BMR/BPR) are outbound WH→destination transfers driven through the same
+ * per-line transfer-phase workflow (Initiate → In Transit → Received at MU → Succeeded). Keep this
+ * in sync with the backend's isOutboundTransferSource() — a source this misses silently loses the
+ * whole receiving flow: status stops persisting on Verify/Received-at-MU and Mark Succeeded, and
+ * the destination zone stops auto-filling from what was already chosen when the request was raised.
+ */
+export function isOutboundTransferSource(source: string | undefined | null): boolean {
+  const s = String(source || '').trim();
+  return s === 'MTR' || s === 'TRQ';
+}
+
 /** BMR id for RM MTR, BPR id for PM MTR (transfer orders source column). */
 export function mrnSourceDocFromApi(
   m: Pick<MRNRecordFromApi, 'source' | 'mtrKind' | 'sourceRef' | 'bmrNo' | 'bprNo' | 'lineItems'>
