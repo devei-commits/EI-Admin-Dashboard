@@ -304,3 +304,36 @@ describe('isInboundGrnRacked — a rack literally named DEFAULT still counts', (
     expect(isInboundGrnRacked(zeroPhotos)).toBe(false);
   });
 });
+
+describe('GRN-2026-0259: status reached GRN Complete without ever being racked', () => {
+  /**
+   * Reached via the "Complete GRN" shortcut: QC fast-tracked to Passed, an assignee and QR labels
+   * present, but Assign Rack itself never ran — no 'Rack Assigned' stamp, no put-away photos, just
+   * the placeholder rack code. The backend's own completion gate only checked that SOME
+   * location_prefix was set, so this was allowed through. Once status is literally 'GRN Complete',
+   * the action view used to return GRN Copy unconditionally — permanently, with no way back to
+   * Assign Rack even though nothing was ever actually racked.
+   */
+  const completedButUnracked = {
+    grnNo: 'GRN-2026-0259',
+    status: 'GRN Complete',
+    qcStatus: 'Passed',
+    assignedTo: 'Admin User',
+    locationPrefix: 'DEFAULT',
+    locationZone: 'Default',
+    workflowSteps: ['Receipt Confirmed', 'Sent to QC', 'PO Received', 'Qty Check', 'QC Inspection'],
+    generatedLabels: [{}],
+  };
+
+  it('still offers Assign Rack instead of a dead-end GRN Copy', () => {
+    expect(inboundGrnActionView(completedButUnracked).label).toBe('Assign Rack');
+  });
+
+  it('but a genuinely racked GRN marked complete still goes to GRN Copy as before', () => {
+    const actuallyRacked = {
+      ...completedButUnracked,
+      workflowSteps: [...completedButUnracked.workflowSteps, 'Rack Assigned'],
+    };
+    expect(inboundGrnActionView(actuallyRacked).label).toBe('GRN Copy');
+  });
+});

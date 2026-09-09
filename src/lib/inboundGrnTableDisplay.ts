@@ -428,7 +428,14 @@ export function inboundGrnActionView(grn: InboundGrnRowInput): { label: string; 
       : { label: 'Assign Rack', prefix: '📍' };
 
   if (statusView.label === 'GRN COMPLETED') {
-    return { label: 'GRN Copy', prefix: '📋' };
+    // 'GRN Complete' is supposed to be unreachable without real racking, but the backend's own
+    // completion gate only checks that SOME location_prefix/zone is set — a GRN completed via the
+    // "Complete GRN" shortcut with the placeholder rack ("DEFAULT") and no real Assign Rack save
+    // (no `Rack Assigned` stamp, no put-away photos) still passed that gate. Once status flips to
+    // 'GRN Complete' the row read GRN Copy forever with no way back to Assign Rack, even though
+    // nothing was ever actually racked — this re-derives the same as every earlier stage instead of
+    // trusting the terminal label blindly, so a mis-completed row can still be fixed.
+    return assignRackOrGrnCopy();
   }
   if (statusView.label === 'QUARANTINED') {
     if (isInboundGrnSentToQc(grn)) {
