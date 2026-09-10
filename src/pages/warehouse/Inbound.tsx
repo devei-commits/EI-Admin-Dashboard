@@ -194,6 +194,7 @@ interface GRNRecord {
 type InboundSortColumn =
   | 'shipment'
   | 'grnNo'
+  | 'po'
   | 'loc'
   | 'item'
   | 'poQty'
@@ -370,6 +371,8 @@ function sortValueForInboundRow(row: InboundTableRow, col: InboundSortColumn): s
       return inboundShipmentSortValue(input);
     case 'grnNo':
       return displayInboundGrnNo(grn.grnNo);
+    case 'po':
+      return grn.poNo ?? '';
     case 'loc':
       return resolveInboundWarehouseCode(input, lineItem);
     case 'item':
@@ -2552,7 +2555,7 @@ const WarehouseInbound = () => {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search GRN or item…"
+                placeholder="Search GRN #, PO #, item, or vendor…"
                 className={`${procInputClass} pl-10`}
               />
             </div>
@@ -2562,7 +2565,7 @@ const WarehouseInbound = () => {
         {/* Data Table */}
         <div className="bg-surface rounded-xl border border-border/80 shadow-sm overflow-hidden">
           <div className="overflow-auto max-h-[70vh]">
-            <table className="w-full min-w-[1280px]">
+            <table className="w-full min-w-[1400px]">
               <thead className="sticky top-0 z-20 [&_th]:bg-surface-2">
                 <tr className="bg-surface-2 border-b border-border">
                   <SortableTableTh
@@ -2575,6 +2578,13 @@ const WarehouseInbound = () => {
                   <SortableTableTh
                     label="GRN #"
                     column="grnNo"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={toggleInboundSort}
+                  />
+                  <SortableTableTh
+                    label="PO #"
+                    column="po"
                     sortColumn={sortColumn}
                     sortDirection={sortDirection}
                     onSort={toggleInboundSort}
@@ -2669,11 +2679,11 @@ const WarehouseInbound = () => {
               <tbody className="divide-y divide-hairline">
                 {loading ? (
                   <tr>
-                    <td colSpan={13} className="px-4 py-12 text-center text-ink-3">Loading GRNs…</td>
+                    <td colSpan={14} className="px-4 py-12 text-center text-ink-3">Loading GRNs…</td>
                   </tr>
                 ) : sortedItemRows.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="px-4 py-12 text-center text-ink-3">
+                    <td colSpan={14} className="px-4 py-12 text-center text-ink-3">
                       {inboundGrnSourceEmptyMessage(activeSourceTab)}
                     </td>
                   </tr>
@@ -2696,6 +2706,13 @@ const WarehouseInbound = () => {
                       </td>
                       <td className="px-4 py-3.5">
                         <span className="text-sm font-mono font-semibold text-brand">{view.grnNo}</span>
+                      </td>
+                      <td className="px-4 py-3.5 whitespace-nowrap">
+                        {grn.poNo ? (
+                          <span className="text-xs font-mono text-brand">{grn.poNo}</span>
+                        ) : (
+                          <span className="text-xs text-ink-4">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3.5 text-sm font-bold text-ink whitespace-nowrap">
                         {view.warehouse}
