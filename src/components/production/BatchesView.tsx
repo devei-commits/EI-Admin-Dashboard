@@ -378,7 +378,10 @@ export function BatchesView<T extends BatchesViewBatch>({
                       <div className="text-sm font-bold text-ink">
                         {formatUnifiedBatchLabel(b)}
                       </div>
-                      <div className="text-xs text-ink-2 font-medium">{b.productName}</div>
+                      <div className="text-xs text-ink-2 font-medium">
+                        {b.productName}
+                        {b.sku && <span className="ml-1.5 font-mono text-[10px] text-ink-4">{b.sku}</span>}
+                      </div>
                     </div>
                     <div className="flex items-center gap-1.5">
                       {(() => {

@@ -119,6 +119,12 @@ export function isPoStatusIssuedLike(status: string | null | undefined): boolean
   return s === 'released' || s === 'issued';
 }
 
+/** A PO's raw backend `status` reads as completed — e.g. "Completed" (matchController.closePo /
+ *  the receipt-auto-completion path both write this exact value to purchase_orders.status). */
+export function isPoStatusCompleted(status: string | null | undefined): boolean {
+  return String(status ?? '').trim().toLowerCase().includes('complet');
+}
+
 /**
  * Which backend POs belong in the Purchase Orders list.
  *
@@ -128,11 +134,17 @@ export function isPoStatusIssuedLike(status: string | null | undefined): boolean
  * "Cancelled" filter matching nothing. It also made the downstream `isPoStatusCancelled` mapping
  * unreachable: the row was already gone before anything could label it.
  *
- * Deliberately NOT used for the "is this PO live?" questions — a cancelled PO must still not block
- * deleting its request, nor be treated as shippable.
+ * Same bug, same fix, for 'Completed': closing a PO (matchController.closePo, or the
+ * receipt-auto-completion path) rewrites status to 'Completed', so gating on issued-like-or-cancelled
+ * only made every completed PO vanish from the list the instant it finished — the exact report that
+ * led here ("no completed purchase orders are reflecting in purchase orders" / a PO number searched
+ * for matching 0 of N rows even though the PO exists and is fully received).
+ *
+ * Deliberately NOT used for the "is this PO live?" questions — a cancelled or completed PO must still
+ * not block deleting its request, nor be treated as shippable.
  */
 export function isPoStatusListed(status: string | null | undefined): boolean {
-  return isPoStatusIssuedLike(status) || isPoStatusCancelled(status);
+  return isPoStatusIssuedLike(status) || isPoStatusCancelled(status) || isPoStatusCompleted(status);
 }
 
 export function derivePoWorkflowStatusFromBackend(

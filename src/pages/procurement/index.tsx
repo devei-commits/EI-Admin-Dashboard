@@ -35,6 +35,7 @@ import type { Order } from '../../types/salesPurchase.types';
 import {
   mergePurchaseOrderRecords,
   isPoStatusCancelled,
+  isPoStatusCompleted,
   isPoStatusIssuedLike,
   isPoStatusListed,
 } from '../../lib/purchaseOrderRecordsMerge';
@@ -1811,10 +1812,20 @@ const Procurement: React.FC = () => {
     [],
   );
 
-  /** All released backend PO ids — batch-fetch po-tracking so linked split POs show Delivered / GRN steps correctly. */
+  /**
+   * All released (or completed) backend PO ids — batch-fetch po-tracking so linked split POs show
+   * Delivered / GRN steps correctly.
+   *
+   * Completed POs MUST stay in this scope even though they're no longer "issued-like": the
+   * poWorkflowStatus derivation below reads `completed` off `tr?.grnCompleteAt` from this very
+   * tracking map. Scoping the fetch to issued-like statuses only meant the instant a PO's backend
+   * status flipped to 'Completed', its id dropped out of this list, the tracking fetch for it never
+   * ran again, `tr` came back undefined, and the row silently fell back through every branch to the
+   * default 'issued' — so a PO could never actually be SEEN as Completed once it became Completed.
+   */
   const releasedPoBackendIdsForTracking = useMemo(() => {
     const ids = purchaseOrders
-      .filter((p) => isIssuedLikePoStatus(p.status))
+      .filter((p) => isIssuedLikePoStatus(p.status) || isPoStatusCompleted(p.status))
       .map((p) => String(p.id ?? '').replace(/^PO-/, ''))
       .filter((id) => /^\d+$/.test(id));
     return [...new Set(ids)].sort();
@@ -3919,9 +3930,17 @@ const Procurement: React.FC = () => {
       const key = bid ? `id:${bid}` : `po:${poNorm}|req:${r.request.id}`;
       if (!dedupedByPo.has(key)) dedupedByPo.set(key, r);
     }
-    return Array.from(dedupedByPo.values()).filter(
-      (r) => !isIssuedPoHandedOffToWarehouse(r, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides),
-    );
+    // NOTE: this used to also filter out rows where isIssuedPoHandedOffToWarehouse() was true
+    // ("hide from Issued POs — tracked in GRN Monitor / Inbound instead"). That exclusion's only
+    // two real consumers (filteredIssuedPORecords, issuedPoOverviewKpis — a dead kanban board and
+    // an unrendered KPI memo) are never actually rendered anywhere in the app; this array's only
+    // live consumer is purchaseOrderViewRecords, i.e. the Purchase Orders list itself. So the
+    // exclusion's only real-world effect was to silently drop a PO from the Purchase Orders list
+    // the moment it was delivered / under GRN / completed — the exact "completed PO not showing"
+    // bug this was all chasing. Once the po-tracking-purchase-orders batch route actually started
+    // returning data (it 404'd before), this filter went from a no-op (tracking was always {}, so
+    // isIssuedPoHandedOffToWarehouse was always false) to actively hiding ~17 real POs.
+    return Array.from(dedupedByPo.values());
   }, [draftPOs, isListedPoStatus, purchaseOrders, quotes, requests, releasedPoTrackingByBackendId, unlinkedPoTimelineOverrides]);
 
   /** KPI + timeline stage counts for Issued POs itemised dashboard (aligned with fulfillment overview). */
