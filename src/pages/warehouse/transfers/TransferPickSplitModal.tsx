@@ -2,7 +2,7 @@
  * Transfer Pick / Split modal (step 2 of the transfer flow).
  *
  * Shows real available packs (warehouse pack inventory, FEFO-sorted) for the required item.
- * Pick takes what's still needed from a pack/rack; Split takes a chosen quantity. Everything
+ * Pick takes the whole pack/rack (a pack moves as one unit); Split takes a chosen quantity. Everything
  * here is CLIENT-SIDE — no packs are written to the DB — so Remove cleanly undoes a pick, the
  * available list reverts, and labels stay in sync. The picks are materialised only when the
  * transfer is completed. Labels shown here (transfer + the warehouse remainder) use provisional
@@ -134,11 +134,12 @@ export const TransferPickSplitModal: React.FC<TransferPickSplitModalProps> = ({
   const availableToShow = packs.filter((p) => remainingOf(p) > 0);
 
   const pick = (source: WarehousePack): void => {
+    // Pick always takes the whole pack — a batch/pack moves as one unit regardless of how much
+    // of it is actually required. Split is the only way to take a partial amount.
     const rem = remainingOf(source);
-    const take = remaining > 0 ? Math.min(rem, remaining) : rem;
-    if (!(take > 0)) return;
+    if (!(rem > 0)) return;
     idRef.current += 1;
-    setCart((prev) => [...prev, { id: `L${idRef.current}`, source, qty: round2(take) }]);
+    setCart((prev) => [...prev, { id: `L${idRef.current}`, source, qty: round2(rem) }]);
   };
   const openSplit = (source: WarehousePack): void => {
     const rem = remainingOf(source);
@@ -356,7 +357,7 @@ export const TransferPickSplitModal: React.FC<TransferPickSplitModalProps> = ({
               </div>
             )}
             <p className="mt-2 text-xs text-ink-3">
-              📌 FEFO (First Expiry First Out) — earliest-expiry packs first. Pick takes what's still needed; Split
+              📌 FEFO (First Expiry First Out) — earliest-expiry packs first. Pick takes the whole pack; Split
               takes a specific amount and labels the remainder. Nothing is committed until you complete the transfer.
             </p>
           </div>
