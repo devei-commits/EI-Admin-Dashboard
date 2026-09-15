@@ -230,22 +230,22 @@ const TransferDispatchModal = ({
           <div>
             <div className="text-sm font-semibold text-ink-2 mb-2">🚚 Vehicle / dispatch details</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <label className="text-xs font-medium text-ink-2">Vehicle No.
+              <label className="text-xs font-medium text-ink-2">Vehicle No. <span className="text-err">*</span>
                 <input value={dispatch.vehicleNo} onChange={(e) => setDispatch((d) => ({ ...d, vehicleNo: e.target.value }))}
                   placeholder="TS-09-AB-7714"
                   className="mt-1 w-full px-3 py-2 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
               </label>
-              <label className="text-xs font-medium text-ink-2">Driver / Transporter
+              <label className="text-xs font-medium text-ink-2">Driver / Transporter <span className="text-err">*</span>
                 <input value={dispatch.driver} onChange={(e) => setDispatch((d) => ({ ...d, driver: e.target.value }))}
                   placeholder="Internal-001"
                   className="mt-1 w-full px-3 py-2 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
               </label>
-              <label className="text-xs font-medium text-ink-2">Tracking / LR No.
+              <label className="text-xs font-medium text-ink-2">Tracking / LR No. <span className="text-err">*</span>
                 <input value={dispatch.trackingNo} onChange={(e) => setDispatch((d) => ({ ...d, trackingNo: e.target.value }))}
                   placeholder="LR / tracking number"
                   className="mt-1 w-full px-3 py-2 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
               </label>
-              <label className="text-xs font-medium text-ink-2">Dispatch Date
+              <label className="text-xs font-medium text-ink-2">Dispatch Date <span className="text-err">*</span>
                 <input type="date" value={dispatch.dispatchDate} onChange={(e) => setDispatch((d) => ({ ...d, dispatchDate: e.target.value }))}
                   className="mt-1 w-full px-3 py-2 border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-brand" />
               </label>

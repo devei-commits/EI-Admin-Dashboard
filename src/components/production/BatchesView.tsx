@@ -12,6 +12,7 @@ import {
   Package,
   Plus,
   Scale,
+  Factory,
   Send,
   Settings,
   X,
@@ -66,6 +67,9 @@ export interface BatchesViewBatch {
   bmrQaStatus?: string;
   bprQaStatus?: string;
   muDispensingBundleId?: string | null;
+  /** RM dispensing tray lines — once every line is done, the card should offer Initiate Production
+      instead of Dispense RM (mirrors the gate in Production.tsx's full action panel). */
+  dispensingRM?: { done?: boolean }[];
 }
 
 export interface BatchesViewHelpers {
@@ -564,6 +568,16 @@ export function BatchesView<T extends BatchesViewBatch>({
                               Dispense RM
                             </Btn>
                           ))}
+                    {/* RM tray fully dispensed — offer the IPQA pre-production gate alongside Dispense
+                        RM above (bmrStatus stays 'dispensing' until Initiate Production runs, so both
+                        buttons appear together, mirroring the full action panel in Production.tsx). */}
+                    {b.bmrStatus === 'dispensing' &&
+                      (b.dispensingRM?.length ?? 0) > 0 &&
+                      b.dispensingRM!.every((l) => l.done) && (
+                        <Btn color="emerald" icon={<Factory size={11} />} onClick={() => onAction('initiateProduction', b)}>
+                          🏭 Initiate Production
+                        </Btn>
+                      )}
                     {b.bmrStatus === 'in_production' && (
                       <Btn color="amber" icon={<Microscope size={11} />} onClick={() => onAction('qcBMR', b)}>
                         Bulk QC

@@ -449,6 +449,13 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
       noOfBoxes: grn.noOfBoxes,
       unitsPerBox: grn.unitsPerBox,
       locationZone: grn.locationZone,
+      // Without these, resolveGrnReceiptSource() inside buildGrnMatchChecks falls back to 'po' for
+      // every transfer GRN (this object never carried them), so the step-7 Accept gate re-demanded
+      // Tax Invoice/E-Way Bill/COA — paperwork that can't exist for a warehouse-to-warehouse
+      // transfer — even though the component-level isTransferGrn (computed straight off `grn`)
+      // already correctly hid that requirement at step 2. Keep both checks agreeing.
+      receiptSource: grn.receiptSource,
+      mrnId: grn.mrnId,
       sourceDocuments: sourceDocumentsWithRefs,
       lineItem: {
         ...lineItem,
