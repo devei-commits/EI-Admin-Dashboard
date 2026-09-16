@@ -49,6 +49,7 @@ import {
 } from '../../lib/inboundGrnStatus';
 import { displayInboundGrnNo, inboundGrnArrivalConfirmPayload } from '../../lib/inboundGrnTableDisplay';
 import { resolveGrnReceiptSource } from '../../lib/inboundGrnSourceFilter';
+import { printGrnCopyPdf } from '../../lib/grnCopyPdfPrint';
 import { fetchMRNList } from '../../services/mrn.service';
 import {
   grnReceiptValidationErrors,
@@ -123,6 +124,8 @@ export type GrnCopyReceiptGrn = {
   lineItems?: Array<Pick<GrnCopyReceiptLineItem, 'itemCode' | 'generatedLabels'>>;
   status?: string | null;
   qcStatus?: string | null;
+  qcBy?: string | null;
+  invoiceAmount?: number | null;
   locationPrefix?: string | null;
   assignedTo?: string | null;
   /** Linked PO id — used to raise a vendor return (RTV) when QC rejects. */
@@ -518,6 +521,45 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
     () => requiredGrnDocKeys(sourceDocuments, { skipChecklistDocs: isTransferGrn }),
     [sourceDocuments, isTransferGrn],
   );
+
+  const handleDownloadGrnCopy = (): void => {
+    const ok = printGrnCopyPdf({
+      grnNo: grn.grnNo,
+      poNo: grn.poNo,
+      vendor: grn.vendor,
+      status: grn.status,
+      receivedDate: grn.receivedDate,
+      grnDate: grn.grnDate,
+      invoiceNo: grn.invoiceNo,
+      invoiceAmount: grn.invoiceAmount,
+      assignedTo: grn.assignedTo,
+      qcStatus: grn.qcStatus,
+      qcBy: grn.qcBy ?? qcBy,
+      locationZone: grn.locationZone,
+      locationPrefix: grn.locationPrefix,
+      documents: requiredDocKeys.map((key) => ({
+        label: GRN_REQUIRED_DOC_LABELS[key],
+        uploaded: Boolean(docFileNameFor(sourceDocuments, key)),
+        fileName: docFileNameFor(sourceDocuments, key),
+      })),
+      lineItems: [
+        {
+          item: lineItem.item,
+          itemCode: lineItem.itemCode,
+          poQty: lineItem.poQty,
+          shippedQty: lineItem.shippedQty,
+          rcvdQty: physicalTotal || lineItem.rcvdQty,
+          invoiceQty: billedQty,
+          unitPrice: verifiedUnitPrice,
+          diff: (physicalTotal || lineItem.rcvdQty) - lineItem.poQty,
+          qcStatus: grn.qcStatus,
+        },
+      ],
+    });
+    if (!ok) {
+      addToast('error', 'Could not open print window. Allow popups and try again.');
+    }
+  };
 
   const updateDocRef = (key: GrnCopyDocRefKey, ref: string): void => {
     setDocRefs((prev) => ({ ...prev, [key]: ref }));
@@ -1315,6 +1357,17 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
               >
                 {generating ? 'Generating…' : hasExistingLabels ? 'Regenerate Labels' : 'Generate Labels'}
               </button>
+              {grn.status === 'GRN Complete' ? (
+                <button
+                  type="button"
+                  onClick={handleDownloadGrnCopy}
+                  title="Download a printable GRN copy (item details, documents checklist, QC, and quantities)"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-2 text-sm font-semibold text-ink-2 hover:bg-surface-2"
+                >
+                  <Printer className="h-4 w-4" aria-hidden />
+                  Download GRN Copy (PDF)
+                </button>
+              ) : null}
               {(grn.generatedPackLabels?.length ?? packagingMeta.rows?.length ?? 0) > 0 ? (
                 <button
                   type="button"

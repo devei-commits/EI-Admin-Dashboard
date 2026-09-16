@@ -5,7 +5,7 @@ import { Search, X, Printer } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '../../context/ToastContext';
 import {
-  fetchGRNList, updateGRN, fetchGRNAssignableUsers, fetchGRNQcReference, grnLineItemDisplayName,
+  fetchGRNList, fetchGRNById, updateGRN, fetchGRNAssignableUsers, fetchGRNQcReference, grnLineItemDisplayName,
   type AssignableUser, type GeneratedLabel,
 } from '../../services/grn.service';
 import { readGrnBatchesMeta } from '../../lib/inboundGrnBatchesMeta';
@@ -39,7 +39,13 @@ import GrnCopyReceiptModal from '../../components/warehouse/GrnCopyReceiptModal'
 import GroupedGrnReceiptModal from '../../components/warehouse/GroupedGrnReceiptModal';
 import GrnPostRackingPhotosSection from '../../components/warehouse/GrnPostRackingPhotosSection';
 import type { EvidencePhoto } from '../../components/warehouse/StockCheckEvidenceCapture';
-import { inboundSourceDocRequirementLabel, type InboundGrnSourceDocuments } from '../../lib/inboundGrnSourceDocs';
+import {
+  inboundSourceDocRequirementLabel,
+  isInboundSourceDocUploaded,
+  INBOUND_SOURCE_DOC_REQUIREMENTS,
+  type InboundGrnSourceDocuments,
+} from '../../lib/inboundGrnSourceDocs';
+import { printGrnCopyPdf } from '../../lib/grnCopyPdfPrint';
 import {
   buildInboundGrnTableRowView,
   buildInboundGrnSlaView,
@@ -644,6 +650,49 @@ const GRNDetailModal = ({
       : [];
     const qrDataUrls = rows.map((_, i) => canvases[i]?.toDataURL('image/png') ?? '');
     if (!printPackLabels(rows, qrDataUrls, packLabelCtx)) {
+      addToast('error', 'Could not open print window. Allow popups and try again.');
+    }
+  };
+
+  const handleDownloadGrnCopy = () => {
+    const docRequirements = INBOUND_SOURCE_DOC_REQUIREMENTS[resolveGrnReceiptSource(grn)];
+    const documents = docRequirements.map((req) => {
+      const entry = sourceDocuments?.[req.key];
+      return {
+        label: req.label,
+        uploaded: isInboundSourceDocUploaded(entry),
+        fileName: entry?.fileName ?? entry?.ref ?? null,
+      };
+    });
+    const ok = printGrnCopyPdf({
+      grnNo: grn.grnNo,
+      poNo: grn.poNo,
+      vendor: grn.vendor,
+      type: grn.type,
+      status: grn.status,
+      receivedDate: grn.receivedDate,
+      grnDate,
+      invoiceNo: grn.invoiceNo,
+      invoiceAmount: grn.invoiceAmount,
+      assignedTo,
+      qcStatus,
+      qcBy,
+      locationZone,
+      locationPrefix,
+      documents,
+      lineItems: editedLineItems.map((li) => ({
+        item: li.item,
+        itemCode: li.itemCode,
+        poQty: li.poQty,
+        shippedQty: li.shippedQty,
+        rcvdQty: li.rcvdQty,
+        invoiceQty: li.invoiceQty,
+        unitPrice: li.unitPrice,
+        diff: li.rcvdQty - li.poQty,
+        qcStatus: li.qcStatus,
+      })),
+    });
+    if (!ok) {
       addToast('error', 'Could not open print window. Allow popups and try again.');
     }
   };
@@ -1304,6 +1353,17 @@ const GRNDetailModal = ({
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {grn.status === 'GRN Complete' && (
+              <button
+                type="button"
+                onClick={handleDownloadGrnCopy}
+                title="Download a printable GRN copy (item details, documents checklist, QC, and quantities)"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-surface text-ink-2 text-xs font-semibold hover:bg-surface-2 transition-colors"
+              >
+                <Printer className="w-3.5 h-3.5" aria-hidden />
+                Download GRN Copy (PDF)
+              </button>
+            )}
             {labelsGenerated && labels && labels.length > 0 && (
               <button
                 type="button"
@@ -2172,9 +2232,16 @@ const WarehouseInbound = () => {
     lineItem: LineItem | null = null,
     mode: 'detail' | 'assign-rack' = 'detail',
   ): void => {
+    // The list only carries stripped media (see grn.service/backend list endpoint) to keep the
+    // table fast, so opening a row must fetch the real record — with actual label/photo/document
+    // images — rather than the lightweight one already in `grnData`. Open immediately with what
+    // we have so the modal doesn't feel stalled, then swap in the full record once it lands.
     setSelectedGRN(grn);
     setSelectedGRNMode(mode);
     setAssignRackFocusLineItem(mode === 'assign-rack' ? lineItem : null);
+    void fetchGRNById(grn.id).then((full) => {
+      if (full) setSelectedGRN(mapApiToGRNRecord(full));
+    });
   }, []);
 
   const handleCloseGrnDetail = (): void => {
