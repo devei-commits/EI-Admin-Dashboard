@@ -54,7 +54,7 @@ import {
   resolveInboundWarehouseCode,
   type InboundGrnRowInput,
 } from '../../lib/inboundGrnTableDisplay';
-import { inboundGrnRackAssignedPayload, inboundGrnSendToQcPayload } from '../../lib/inboundGrnStatus';
+import { inboundGrnRackAssignedPayload, inboundGrnSendToQcPayload, INBOUND_GRN_RACK_ASSIGNED_STEP } from '../../lib/inboundGrnStatus';
 import { requiredGrnDocsError } from '../../lib/grnCopyReceiptDisplay';
 import {
   buildPostRackingPhotosMeta,
@@ -1224,10 +1224,19 @@ const GRNDetailModal = ({
       setSaveError(`Cannot mark complete yet: ${completionBlockers.join(' ')}`);
       return;
     }
+    // Additive, not a replace: this used to send the bare WORKFLOW_STEPS_REQUIRED list, which
+    // has no 'Rack Assigned' entry — a GRN put away to a rack literally coded DEFAULT would then
+    // never satisfy the backend's completion gate (it requires that exact stamp to prove Assign
+    // Rack actually ran), no matter how many times the rack was saved. Union with `grn.workflowSteps`
+    // (the fresh prop, not `currentWorkflowSteps` — see handleSaveAndContinueToGrnCopy) so any
+    // steps already recorded survive too.
+    const steps = Array.from(
+      new Set([...(grn.workflowSteps ?? []), ...WORKFLOW_STEPS_REQUIRED, INBOUND_GRN_RACK_ASSIGNED_STEP]),
+    );
     void persistUpdate({
       status: 'GRN Complete',
       qcStatus: 'Passed',
-      workflowSteps: WORKFLOW_STEPS_REQUIRED,
+      workflowSteps: steps,
     });
   };
 
