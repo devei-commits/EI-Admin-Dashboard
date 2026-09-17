@@ -210,6 +210,9 @@ export interface PlanningBatchRow {
   productionBmrStatus?: string | null;
   /** False once Production confirms the batch (`bmr_status` past `draft`). */
   editable?: boolean;
+  /** Auto-seeded placeholder for units already fulfilled (e.g. via Fast Forward) before any real
+   *  batch existed for this line — not a real production run; carries no BOM lines. */
+  isFulfilledPlaceholder?: boolean;
 }
 
 export async function fetchPlanningBatches(planningExtractedId: string): Promise<PlanningBatchRow[]> {

@@ -17,7 +17,7 @@ import React, { forwardRef, useImperativeHandle, useState } from 'react';
 import type {
   SaleOrder, AddSOData, PickData, InvoiceData, ShipData, DeliveryData, SalesOrderStatus,
 } from '../../types/orderFulfillment';
-import { fetchFulfillmentOrderById } from '../../services/fulfillment.service';
+import { fetchFulfillmentOrderById, fastForwardInvoiceForOrder } from '../../services/fulfillment.service';
 import { useToast } from '../../context/ToastContext';
 import { AddSOModal } from './AddSOModal';
 import { SODetailModal } from './SODetailModal';
@@ -26,6 +26,7 @@ import { InvoiceModal } from './InvoiceModal';
 import { ShipModal } from './ShipModal';
 import { TrackModal } from './TrackModal';
 import { EditSOModal } from './EditSOModal';
+import { FastForwardModal, type FastForwardLineInput } from './FastForwardModal';
 
 export type SoUpdatePayload = {
   customer: string;
@@ -72,6 +73,7 @@ export interface SoActionModalsHandle {
   openInvoice: (soId: number, bprNos?: string[]) => void;
   openShip: (soId: number, bprNos?: string[]) => void;
   openTrack: (soId: number, bprNos?: string[]) => void;
+  openFastForward: (soId: number) => void;
   /** Edit-lock check exposed so callers can hide/disable the Edit action. */
   isEditLocked: (so: SaleOrder) => boolean;
 }
@@ -102,6 +104,9 @@ export const SoActionModals = forwardRef<SoActionModalsHandle, SoActionModalsPro
   const [shipSelectedBprNos, setShipSelectedBprNos] = useState<string[] | undefined>(undefined);
   const [trackSelectedBprNos, setTrackSelectedBprNos] = useState<string[] | undefined>(undefined);
 
+  // Fast Forward — triggered from the SO row menu and from the SO Detail modal's footer button.
+  const [fastForwardModalSO, setFastForwardModalSO] = useState<SaleOrder | null>(null);
+
   /** Fetch one order's full detail (items + batch splits) for the modal that is about to open. */
   const loadSo = async (soId: number): Promise<SaleOrder | null> => {
     setLoadingSo(true);
@@ -122,6 +127,7 @@ export const SoActionModals = forwardRef<SoActionModalsHandle, SoActionModalsPro
     openInvoice: async (soId, bprNos) => { const so = await loadSo(soId); if (so) { setInvoiceModalSO(so); setInvoiceSelectedBprNos(bprNos); } },
     openShip: async (soId, bprNos) => { const so = await loadSo(soId); if (so) { setShipModalSO(so); setShipSelectedBprNos(bprNos); } },
     openTrack: async (soId, bprNos) => { const so = await loadSo(soId); if (so) { setTrackModalSO(so); setTrackSelectedBprNos(bprNos); } },
+    openFastForward: async (soId) => { const so = await loadSo(soId); if (so) setFastForwardModalSO(so); },
     isEditLocked: computeEditLocked,
   }), []);
 
@@ -161,6 +167,21 @@ export const SoActionModals = forwardRef<SoActionModalsHandle, SoActionModalsPro
     onAfterChange?.();
   };
 
+  const handleFastForwardConfirm = async (lines: FastForwardLineInput[]) => {
+    if (!fastForwardModalSO?.id) return;
+    try {
+      await fastForwardInvoiceForOrder(fastForwardModalSO.id, lines);
+      onAfterChange?.();
+    } catch (e) {
+      const body = (e as { body?: { error?: string } })?.body;
+      const msg = typeof body?.error === 'string' && body.error.trim()
+        ? body.error
+        : 'Failed to fast-forward this sale order.';
+      addToast('error', msg);
+      throw e; // keep the modal open so the entered quantities aren't lost
+    }
+  };
+
   return (
     <>
       {/* The clicked SO's detail is fetched on demand, so give that click immediate feedback. */}
@@ -192,9 +213,18 @@ export const SoActionModals = forwardRef<SoActionModalsHandle, SoActionModalsPro
             case 'invoice': setInvoiceModalSO(detailModalSO); setInvoiceSelectedBprNos(bprNos); break;
             case 'ship': setShipModalSO(detailModalSO); setShipSelectedBprNos(bprNos); break;
             case 'track': setTrackModalSO(detailModalSO); setTrackSelectedBprNos(bprNos); break;
+            // Already has the full order loaded — no need to re-fetch via openFastForward.
+            case 'fast_forward': setFastForwardModalSO(detailModalSO); break;
           }
           setDetailModalSO(null);
         }}
+      />
+
+      <FastForwardModal
+        isOpen={!!fastForwardModalSO}
+        onClose={() => setFastForwardModalSO(null)}
+        saleOrder={fastForwardModalSO}
+        onConfirm={handleFastForwardConfirm}
       />
 
       <EditSOModal

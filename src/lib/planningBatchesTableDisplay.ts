@@ -8,6 +8,7 @@ import { batchUnitsFromSize, formatPisTableDate } from './pisExtractedTableDispl
 import type { PlanningBatchAllRow } from '../services/planningExtracted.service';
 import type {
   SoPlanningAvailabilityResponse,
+  SoPlanningAvailabilityItem,
   SoPlanningBatchAvailabilityRow,
 } from '../services/fulfillment.service';
 import type { BatchRow } from '../services/production.service';
@@ -103,6 +104,27 @@ export function formatPlanningBatchSizeKg(sizeKg: number | null | undefined): st
   return formatQtyExact(Number(sizeKg), 'kg');
 }
 
+/** Product-only match (no batch/sequence) — same rule findPlanningBatchAvailability uses per-batch. */
+function matchPlanningAvailabilityItem(
+  availability: SoPlanningAvailabilityResponse | undefined,
+  productCode: string | undefined,
+  productName: string | undefined,
+): SoPlanningAvailabilityItem | null {
+  if (!availability?.items?.length) return null;
+  const code = String(productCode ?? '').trim().toLowerCase();
+  const name = String(productName ?? '').trim().toLowerCase();
+  for (const item of availability.items) {
+    const sku = String(item.sku ?? '').trim().toLowerCase();
+    const itemName = String(item.productName ?? '').trim().toLowerCase();
+    const productMatches =
+      !code && !name
+        ? true
+        : (code && sku === code) || (name && itemName === name) || availability.items.length === 1;
+    if (productMatches) return item;
+  }
+  return null;
+}
+
 export function findPlanningBatchAvailability(
   availability: SoPlanningAvailabilityResponse | undefined,
   row: PlanningBatchAllRow,
@@ -124,6 +146,21 @@ export function findPlanningBatchAvailability(
     if (match) return match;
   }
   return null;
+}
+
+/**
+ * Units already fulfilled (invoiced/shipped/delivered — e.g. via Fast Forward) for a product on an
+ * SO, matched the same way findPlanningBatchAvailability matches a batch — product_code/name, or the
+ * sole item when an SO has just one line. Used to reduce "Pending to plan" so an already-fulfilled
+ * portion doesn't keep demanding a fresh batch be planned for it.
+ */
+export function findFulfilledUnitsForPlanningItem(
+  availability: SoPlanningAvailabilityResponse | undefined,
+  productCode: string | undefined,
+  productName: string | undefined,
+): number {
+  const item = matchPlanningAvailabilityItem(availability, productCode, productName);
+  return Math.max(0, Number(item?.fulfilledUnits) || 0);
 }
 
 function buildMaterialStatusFromAvailability(

@@ -40,6 +40,8 @@ export interface BatchesViewBatch {
   batchIndex: number;
   totalBatches: number;
   batchSize: number;
+  /** Total SO/PR quantity across all batches — divided by totalBatches to show this batch's unit count. */
+  orderQty?: number;
   processType: string;
   fillingType: string;
   mainVessel: string;
@@ -422,6 +424,12 @@ export function BatchesView<T extends BatchesViewBatch>({
                     </div>
                     <div>
                       <span className="text-ink-4">Size:</span> <b>{b.batchSize} KG</b>
+                      {b.orderQty ? (
+                        <b className="text-ink-3">
+                          {' '}
+                          (~{Math.ceil(b.orderQty / (b.totalBatches || 1)).toLocaleString()} units)
+                        </b>
+                      ) : null}
                     </div>
                     <div>
                       <span className="text-ink-4">MFG:</span> <b>{b.mfgDate || '-'}</b>

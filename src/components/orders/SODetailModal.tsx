@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Package, MapPin, FileText, Truck, CheckCircle, MessageSquare } from 'lucide-react';
+import { Package, MapPin, FileText, Truck, CheckCircle, MessageSquare, Zap } from 'lucide-react';
 import { UnifiedModal as Modal, UnifiedButton as Button } from '../ui/UnifiedComponents';
 import { StatusBadge } from './StatusBadge';
 import { ProcThead } from '../procurement/ProcSection';
@@ -97,6 +97,15 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
     i.batchSplits.some((sp) => sp.ffStatus === 'fg_ready')
   );
 
+  // Same "is there anything left to fast-forward" check the backend applies: a line with no batch
+  // split at all, or one whose splits aren't already invoiced/shipped/delivered/closed.
+  const TERMINAL_FF_STATUSES = ['invoiced', 'shipped', 'delivered', 'closed'];
+  const canFastForward =
+    String(saleOrder.soStatus).toLowerCase() !== 'cancelled' &&
+    saleOrder.items.some(
+      (i) => i.batchSplits.length === 0 || i.batchSplits.some((sp) => !TERMINAL_FF_STATUSES.includes(sp.ffStatus))
+    );
+
   const modalTitle = (
     <div>
       <div className="text-xl font-bold text-ink tracking-tight" id="sod-title">
@@ -133,6 +142,17 @@ export const SODetailModal: React.FC<SODetailModalProps> = ({
           <Button variant="ghost" onClick={onClose}>
             Close
           </Button>
+          {canFastForward && (
+            <Button
+              variant="secondary"
+              onClick={() => onAction('fast_forward', saleOrder.soNo)}
+              className="flex items-center gap-1.5"
+              title="Facility already completed this outside the tool — force-complete every remaining line and generate the invoice now"
+            >
+              <Zap className="w-4 h-4" />
+              Fast Forward
+            </Button>
+          )}
           {hasFGReady && (
             <Button
               variant="primary"

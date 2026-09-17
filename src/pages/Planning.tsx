@@ -38,6 +38,7 @@ import {
   buildPlanningBatchProductionView,
   buildPlanningBatchRmStatusView,
   computePlanningBatchPlannedQty,
+  findFulfilledUnitsForPlanningItem,
   findPlanningBatchAvailability,
   formatPlanningBatchCreatedDate,
   formatPlanningBatchPlannedQty,
@@ -2956,6 +2957,26 @@ const Planning = () => {
   const planBatchesModalBodyRef = useRef<HTMLDivElement>(null);
   const [swapSourceIndex, setSwapSourceIndex] = useState<number | null>(null);
   const [selectedSOForBatch, setSelectedSOForBatch] = useState<SalesOrder | null>(null);
+  // Fulfillment availability for whichever SO the Plan Batches modal has open — separate from
+  // PlanningBatchesTab's own `availabilityBySoNo` (a different component's local state, out of scope
+  // here). Only fetched for this one SO, on open, so "Pending to plan" can subtract already-fulfilled
+  // units without touching every row's data up front.
+  const [planBatchesModalAvailability, setPlanBatchesModalAvailability] = useState<SoPlanningAvailabilityResponse | null>(null);
+  useEffect(() => {
+    const soNo = selectedSOForBatch?.soNumber;
+    if (!planBatchesModalOpen || !soNo) {
+      setPlanBatchesModalAvailability(null);
+      return;
+    }
+    let cancelled = false;
+    fetchSoPlanningAvailability(soNo)
+      .then((res) => { if (!cancelled) setPlanBatchesModalAvailability(res); })
+      .catch((e) => {
+        console.error('fetchSoPlanningAvailability (Plan Batches modal) error', { soNo, e });
+        if (!cancelled) setPlanBatchesModalAvailability(null);
+      });
+    return () => { cancelled = true; };
+  }, [planBatchesModalOpen, selectedSOForBatch?.soNumber]);
   const [activeBatchTab, setActiveBatchTab] = useState<'batch-plan' | 'bom-editor' | 'swap-add'>('bom-editor');
   const [numBatches, setNumBatches] = useState('15');
   const [batchSizeKg, setBatchSizeKg] = useState('500');
@@ -2977,7 +2998,7 @@ const Planning = () => {
   const [bomPackaging, setBomPackaging] = useState<PackagingMaterial[]>([]);
   const [isReadyForProduction, setIsReadyForProduction] = useState(false);
   const [productionSentOrderIds, setProductionSentOrderIds] = useState<string[]>([]);
-  const [customBatches, setCustomBatches] = useState<{ sizeKg: number }[]>([]);
+  const [customBatches, setCustomBatches] = useState<{ sizeKg: number; isFulfilledPlaceholder?: boolean }[]>([]);
   const [expandedBatchIndex, setExpandedBatchIndex] = useState<number | null>(null);
   /** Selected batch id (planning_batches.id) — drives BOM editor, swap/add, batch plan for this batch only */
   const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null);
@@ -3605,7 +3626,10 @@ const Planning = () => {
       // Content-equal guard: keep the same `customBatches` reference when sizes already match the backend.
       // Skip while the user has unsaved local edits — refetch must not wipe in-progress qty changes.
       if (!batchPlanDirtyRef.current) {
-        const incoming = (planningBatches as PlanningBatchRow[]).map((b) => ({ sizeKg: Number(b.sizeKg ?? 500) }));
+        const incoming = (planningBatches as PlanningBatchRow[]).map((b) => ({
+          sizeKg: Number(b.sizeKg ?? 500),
+          isFulfilledPlaceholder: b.isFulfilledPlaceholder === true,
+        }));
         setCustomBatches((prev) => {
           if (prev.length === incoming.length && prev.every((b, i) => Number(b.sizeKg) === Number(incoming[i]?.sizeKg))) {
             return prev;
@@ -3823,6 +3847,22 @@ const Planning = () => {
     const tk = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
     const kpu = oq > 0 && tk > 0 ? tk / oq : 0;
     const sent = selectedSOForBatch.sentBatchIndices ?? [];
+    // Units already invoiced/shipped/delivered outside the normal batch pipeline (e.g. Fast Forward)
+    // — converted to kg via the same kg-per-unit ratio and subtracted below, so an already-fulfilled
+    // portion of the order doesn't keep demanding a fresh batch be planned for it. When a real
+    // placeholder batch already represents this (seeded server-side — see
+    // seedFulfilledPlaceholderBatchIfNeeded), its kg is already counted via soAllocKg below, so only
+    // the NOT-yet-represented remainder is subtracted here — otherwise it would be counted twice.
+    const fulfilledUnits = findFulfilledUnitsForPlanningItem(
+      planBatchesModalAvailability ?? undefined,
+      selectedSOForBatch.productCode,
+      selectedSOForBatch.productName,
+    );
+    const fulfilledKgTotal = kpu > 0 ? fulfilledUnits * kpu : 0;
+    const placeholderKg = customBatches
+      .filter((b) => b.isFulfilledPlaceholder)
+      .reduce((sum, b) => sum + (Number(b.sizeKg) || 0), 0);
+    const fulfilledKg = Math.max(0, fulfilledKgTotal - placeholderKg);
 
     const previewUnits = Math.max(0, Math.floor(feasibilityPreviewQty || 0));
     const previewKg = Math.max(0, previewUnits * kpu);
@@ -3843,16 +3883,21 @@ const Planning = () => {
     // First batch not yet in customBatches → the preview is an SO batch about to be created.
     if (!workingInList) soAllocKg += previewKg;
 
+    // What's actually left to plan a batch for: the order total minus whatever's already fulfilled
+    // outside the batch pipeline. orderTotalKg below stays the TRUE full order total (still shown as
+    // such); only "pending"/"over-production" shrink to reflect the already-fulfilled portion.
+    const remainingTk = Math.max(0, tk - fulfilledKg);
+
     const allocKg = soAllocKg + bufferKg;
-    const pendKg = tk - soAllocKg;
+    const pendKg = remainingTk - soAllocKg;
     const pendUnits = kpu > 0 ? pendKg / kpu : 0;
     const bufferUnits = kpu > 0 ? bufferKg / kpu : 0;
     const allocUnits = kpu > 0 ? allocKg / kpu : 0;
-    // Over-production from over-filling SO batches above the order total (e.g. bumping the
+    // Over-production from over-filling SO batches above what's still needed (e.g. bumping the
     // working batch's preview qty past what the order needs). Without this the excess just
     // drives SO pending negative and gets clamped to 0, hiding it. Surface it as buffer so the
     // summary reflects the extra units instead of silently showing "pending 0".
-    const soOverKg = Math.max(0, soAllocKg - tk);
+    const soOverKg = Math.max(0, soAllocKg - remainingTk);
     const soOverUnits = kpu > 0 ? soOverKg / kpu : 0;
     // What the UI shows as buffer / over-production = explicitly-flagged buffer batches + SO over-fill.
     const totalBufferKg = bufferKg + soOverKg;
@@ -3862,6 +3907,8 @@ const Planning = () => {
       orderQty: oq,
       orderTotalKg: tk,
       kgPerUnit: kpu,
+      fulfilledUnits,
+      fulfilledKg,
       allocKg,
       soAllocKg,
       bufferKg,
@@ -3879,6 +3926,10 @@ const Planning = () => {
     // `selectedSOForBatch` gets a new reference from an unrelated field update.
   }, [
     selectedSOForBatch?.id,
+    selectedSOForBatch?.soNumber,
+    selectedSOForBatch?.productCode,
+    selectedSOForBatch?.productName,
+    planBatchesModalAvailability,
     selectedSOForBatch?.orderQty,
     selectedSOForBatch?.totalKg,
     selectedSOForBatch?.sentBatchIndices,
@@ -10800,6 +10851,14 @@ const Planning = () => {
                     {' · '}
                     <span className="font-semibold">{planBatchesAllocationSummary.unsentCount}</span> batch
                     {planBatchesAllocationSummary.unsentCount !== 1 ? 'es' : ''} not sent
+                    {planBatchesAllocationSummary.fulfilledUnits > 0.01 && (
+                      <>
+                        {' · '}
+                        <span className="text-ok">
+                          {Math.round(planBatchesAllocationSummary.fulfilledUnits).toLocaleString()} units already fulfilled
+                        </span>
+                      </>
+                    )}
                   </p>
                 )}
               </div>
@@ -10920,6 +10979,7 @@ const Planning = () => {
                     {(planningBatches as PlanningBatchRow[]).map((b, idx) => (
                       <option key={b.id} value={String(b.id)}>
                         {b.batchCode ?? `batch-${String(idx + 1).padStart(2, '0')}`}
+                        {b.isFulfilledPlaceholder ? ' (Fulfilled)' : ''}
                       </option>
                     ))}
                     {selectedBatchId != null &&
@@ -11393,7 +11453,14 @@ const Planning = () => {
                               return (
                                 <div key={row?.id ?? `batch-${originalIndex}`} className={`border-2 rounded-lg overflow-hidden transition-colors ${isLockedSent ? 'border-border bg-surface-3 opacity-90' : isBuffer ? 'border-warn-soft bg-warn-soft/30' : isExpanded ? 'border-ok-soft bg-ok-soft/30' : 'border-border bg-surface'}`}>
                                   <div className="flex items-center gap-3 p-4">
-                                    {isSent && (
+                                    {batch.isFulfilledPlaceholder ? (
+                                      <span
+                                        className="shrink-0 text-xs font-semibold px-2 py-1 rounded text-ok bg-ok-soft"
+                                        title="Units already invoiced/shipped outside the normal batch pipeline (e.g. Fast Forward) — not a real production run"
+                                      >
+                                        Fulfilled
+                                      </span>
+                                    ) : isSent && (
                                       <span className={`shrink-0 text-xs font-semibold px-2 py-1 rounded ${isLockedSent ? 'text-ink-3 bg-surface-3' : 'text-warn bg-warn-soft'}`}>
                                         {isLockedSent ? 'Sent' : 'Sent · editable'}
                                       </span>

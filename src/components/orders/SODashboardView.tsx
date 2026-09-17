@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   Search, AlertCircle, MessageSquare, RefreshCw, ChevronDown, ChevronRight,
   Package, Plus, MoreVertical, Eye, Pencil, PackageCheck, FileText, Truck, MapPin,
-  XCircle, CheckCircle2, AlertTriangle,
+  XCircle, CheckCircle2, Zap,
 } from 'lucide-react';
 import type {
   SODashboardRow, CommercialStatus, SalesOrderStatus,
@@ -25,6 +25,7 @@ import { TableSkeleton } from '../ui/Skeleton';
 import { EmptyState } from '../ui/EmptyState';
 import { ErrorState } from '../ui/ErrorState';
 import { sortGroupedSoRows, type SoDashboardSortKey, type SortDir } from '../../lib/soDashboardSort';
+import { ConfirmActionDialog, type ConfirmActionType, type ConfirmState } from './ConfirmActionDialog';
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '—';
@@ -190,7 +191,7 @@ function BatchStageBar({ pills, total }: { pills: SODashboardRow['batchPills']; 
 }
 
 // ─── Row actions menu ───────────────────────────────────────────────────────
-type RowActionKey = 'detail' | 'edit' | 'pick' | 'invoice' | 'ship' | 'track' | 'cancel' | 'manual_fulfill';
+type RowActionKey = 'detail' | 'edit' | 'pick' | 'invoice' | 'fast_forward' | 'ship' | 'track' | 'cancel' | 'manual_fulfill';
 
 interface RowActionsProps {
   open: boolean;
@@ -243,6 +244,7 @@ function RowActions({ open, onToggle, onAction }: RowActionsProps) {
     { key: 'edit',           label: 'Edit SO',             Icon: Pencil },
     { key: 'pick',           label: 'Pick / Pack',         Icon: PackageCheck },
     { key: 'invoice',        label: 'Generate invoice',    Icon: FileText },
+    { key: 'fast_forward',   label: 'Fast forward → Invoiced', Icon: Zap },
     { key: 'ship',           label: 'Ship',                Icon: Truck },
     { key: 'track',          label: 'Track delivery',      Icon: MapPin },
     { key: 'manual_fulfill', label: 'Mark as fulfilled',   Icon: CheckCircle2 },
@@ -290,72 +292,9 @@ function RowActions({ open, onToggle, onAction }: RowActionsProps) {
 }
 
 // ─── Confirm dialog ──────────────────────────────────────────────────────────
-type ConfirmActionType = 'cancel' | 'manual_fulfill';
-interface ConfirmState { id: number; soNo: string; type: ConfirmActionType }
-
-function ConfirmDialog({
-  state,
-  onClose,
-  onConfirm,
-  loading,
-}: {
-  state: ConfirmState;
-  onClose: () => void;
-  onConfirm: () => void;
-  loading: boolean;
-}) {
-  const isCancel = state.type === 'cancel';
-  return (
-    <>
-      <div className="fixed inset-0 bg-black/30 z-50" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="so-confirm-dialog-title"
-          className="bg-surface rounded-xl border border-border shadow-xl p-6 w-full max-w-sm pointer-events-auto"
-        >
-          <div className="flex items-start gap-3 mb-3">
-            <div className={`mt-0.5 p-1.5 rounded-full ${isCancel ? 'bg-err-soft' : 'bg-ok-soft'}`}>
-              {isCancel
-                ? <AlertTriangle size={16} className="text-err" />
-                : <CheckCircle2 size={16} className="text-ok" />}
-            </div>
-            <div>
-              <h3 id="so-confirm-dialog-title" className="font-bold text-ink text-sm">
-                {isCancel ? 'Cancel Sales Order' : 'Mark as Manually Fulfilled'}
-              </h3>
-              <p className="text-[11px] text-ink-3 mt-0.5">{state.soNo}</p>
-            </div>
-          </div>
-          <p className="text-sm text-ink-3 mb-5">
-            {isCancel
-              ? 'This will set SO status and commercial status to "Cancelled" and freeze all further changes. This cannot be undone from the dashboard.'
-              : 'This will mark the SO as fully fulfilled and close it. Status will be set to "Closed" and frozen. Use this for SOs completed outside normal workflow.'}
-          </p>
-          <div className="flex gap-2 justify-end">
-            <button
-              onClick={onClose}
-              disabled={loading}
-              className="px-3 py-2 text-sm rounded-lg border border-border text-ink-2 hover:bg-surface-3 disabled:opacity-60"
-            >
-              Go back
-            </button>
-            <button
-              onClick={onConfirm}
-              disabled={loading}
-              className={`px-3 py-2 text-sm rounded-lg font-semibold text-white disabled:opacity-60 ${
-                isCancel ? 'bg-err hover:opacity-90' : 'bg-ok hover:opacity-90'
-              }`}
-            >
-              {loading ? 'Processing…' : isCancel ? 'Yes, Cancel SO' : 'Yes, Mark Fulfilled'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
+// ConfirmActionType / ConfirmState / the dialog itself live in ConfirmActionDialog.tsx (Cancel and
+// Manual Fulfill only — Fast Forward needs a qty input per line, so it uses FastForwardModal via
+// SoActionModals instead).
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 export interface SODashboardViewProps {
@@ -536,17 +475,18 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
     });
   };
 
-  const runAction = (soId: number, action: 'detail' | 'edit' | 'pick' | 'invoice' | 'ship' | 'track') => {
+  const runAction = (soId: number, action: 'detail' | 'edit' | 'pick' | 'invoice' | 'fast_forward' | 'ship' | 'track') => {
     setMenuOpenId(null);
     const r = actionsRef.current;
     if (!r) return;
     switch (action) {
-      case 'detail':  r.openDetail(soId); break;
-      case 'edit':    r.openEdit(soId); break;
-      case 'pick':    r.openPick(soId); break;
-      case 'invoice': r.openInvoice(soId); break;
-      case 'ship':    r.openShip(soId); break;
-      case 'track':   r.openTrack(soId); break;
+      case 'detail':       r.openDetail(soId); break;
+      case 'edit':         r.openEdit(soId); break;
+      case 'pick':         r.openPick(soId); break;
+      case 'invoice':      r.openInvoice(soId); break;
+      case 'fast_forward': r.openFastForward(soId); break;
+      case 'ship':         r.openShip(soId); break;
+      case 'track':        r.openTrack(soId); break;
     }
   };
 
@@ -841,9 +781,9 @@ export const SODashboardView: React.FC<SODashboardViewProps> = ({
         <div className="fixed inset-0 z-20" onClick={() => setMenuOpenId(null)} />
       )}
 
-      {/* Cancel / Manual-fulfill confirm dialog */}
+      {/* Cancel / Manual-fulfill / Fast-forward confirm dialog */}
       {confirmState && (
-        <ConfirmDialog
+        <ConfirmActionDialog
           state={confirmState}
           onClose={() => !confirmLoading && setConfirmState(null)}
           onConfirm={handleConfirmAction}

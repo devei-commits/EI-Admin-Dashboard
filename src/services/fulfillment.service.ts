@@ -357,6 +357,10 @@ export interface SoPlanningAvailabilityItem {
   rmLineTotalCount?: number;
   pmLineAvailableCount?: number;
   pmLineTotalCount?: number;
+  /** Units already invoiced/shipped/delivered in Fulfillment for this product on this SO (e.g. via
+   *  Fast Forward) — subtract from "Pending to plan" so an already-fulfilled portion doesn't keep
+   *  demanding a batch be planned for it. */
+  fulfilledUnits?: number;
   batches: SoPlanningBatchAvailabilityRow[];
 }
 
@@ -507,6 +511,20 @@ export async function cancelFulfillmentOrder(id: number): Promise<void> {
 
 export async function manualFulfillFulfillmentOrder(id: number): Promise<void> {
   await api.patch(`${BASE}/${id}/manual-fulfill`, {});
+}
+
+/**
+ * Catch-up for an SO the facility already completed outside the tool. `lines` says how much of
+ * each order line (fulfillment_order_items.id → qty) is actually done — that qty is force-marked
+ * FG Ready → Picked and a real invoice is generated for it immediately, with placeholder
+ * transporter details (no AWB). Production/Planning/GRN/QC records are left untouched. See
+ * fastForwardInvoice in the backend fulfillment controller for the full behaviour.
+ */
+export async function fastForwardInvoiceForOrder(
+  id: number,
+  lines: Array<{ itemId: number; qty: number }>
+): Promise<void> {
+  await api.post(`${BASE}/${id}/fast-forward-invoice`, { items: lines });
 }
 
 export async function fetchSoPlanningAvailability(soNo: string): Promise<SoPlanningAvailabilityResponse> {
