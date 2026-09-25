@@ -405,13 +405,10 @@ export function isInboundGrnRacked(grn: InboundGrnRowInput): boolean {
 
   const steps = Array.isArray(grn.workflowSteps) ? grn.workflowSteps : [];
   if (steps.includes(INBOUND_GRN_RACK_ASSIGNED_STEP)) return true;
-
-  // Photos are mandatory to save the step, so any stored photo is proof it was completed.
-  const byRack = grn.sourceDocuments?.postRackingPhotos?.byRack ?? {};
-  if (Object.values(byRack).some((entry) => Number(entry?.photoCount) > 0)) return true;
-
-  // Legacy rows: no stamp, no photos — fall back to "the code isn't the auto-filled placeholder".
-  return rack.toUpperCase() !== 'DEFAULT';
+  // A location value alone is not proof that stock was put away. Every rack, including a named
+  // legacy/custom rack, must be saved through Assign Rack so the workflow step is recorded before
+  // GRN completion can proceed.
+  return false;
 }
 
 export function inboundGrnActionView(grn: InboundGrnRowInput): { label: string; prefix: string | null } {

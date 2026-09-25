@@ -740,6 +740,29 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
     setGenerating(true);
     try {
       const res = await generateLabelsCore();
+      const completeAfterLabelGeneration =
+        qcAlreadyDecided && putawayMissing.length === 0 && Boolean(qcBy.trim());
+      if (completeAfterLabelGeneration) {
+        const completedWorkflowSteps = [...new Set([...res.workflowSteps, ...GRN_COMPLETE_WORKFLOW_STEPS])];
+        await updateGRN(grn.id, {
+          status: 'GRN Complete',
+          qcStatus: 'Passed',
+          qcBy: qcBy.trim(),
+          workflowSteps: completedWorkflowSteps,
+        });
+        addToast('success', `${res.noOfBoxes} rack labels generated · GRN completed. Print the labels below.`);
+        onSaved({
+          ...grn,
+          status: 'GRN Complete',
+          qcStatus: 'Passed',
+          sourceDocuments: res.mergedDocs,
+          noOfBoxes: res.noOfBoxes,
+          unitsPerBox: res.unitsPerBox,
+          workflowSteps: completedWorkflowSteps,
+          generatedLabels: res.labels,
+        });
+        return;
+      }
       addToast(
         'success',
         `${res.noOfBoxes} rack labels generated · GRN verified · use Send to QC when ready.`,
@@ -1686,7 +1709,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                   id="grn-qc-analyst-fasttrack"
                   type="text"
                   value={qcBy}
-                  disabled={docsLocked || decidingQc}
+                  disabled={decidingQc}
                   onChange={(e) => setQcBy(e.target.value)}
                   placeholder="e.g. P. Bhatia"
                   className="w-full rounded-lg border border-border px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand disabled:cursor-not-allowed disabled:bg-surface-3"
@@ -1703,7 +1726,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
               qcSpecs={qcSpecs}
               loading={qcLoading}
               error={qcError}
-              disabled={docsLocked || decidingQc}
+              disabled={decidingQc}
               onChange={setQcSpecs}
               qcBy={qcBy}
               onQcByChange={setQcBy}
@@ -1843,7 +1866,7 @@ const GrnCopyReceiptModal: React.FC<GrnCopyReceiptModalProps> = ({
                   {sendingToQc ? 'Sending…' : qcSentAt ? 'Re-send to QC' : 'Send to Quarantine → QC'}
                 </button>
               ) : null}
-              {!docsLocked && currentStep === 7 ? (
+              {currentStep === 7 ? (
                 <>
                   <button
                     type="button"

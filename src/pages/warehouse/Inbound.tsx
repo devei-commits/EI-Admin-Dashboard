@@ -1282,9 +1282,16 @@ const GRNDetailModal = ({
     const steps = Array.from(
       new Set([...(grn.workflowSteps ?? []), ...WORKFLOW_STEPS_REQUIRED, INBOUND_GRN_RACK_ASSIGNED_STEP]),
     );
+    // By the time Complete GRN is reachable, QC already passed (fast-tracked or full checklist) —
+    // canMarkComplete above deliberately skips re-checking the checklist in assign-rack mode. But
+    // re-asserting qcStatus: 'Passed' here still hits the backend's validateQcSpecsForPassed gate,
+    // which 400s with "No QC tests available" for a fast-tracked GRN that never had a checklist
+    // (GRN-2026-0290). qcFastTrack tells the backend this Passed status doesn't need re-validating,
+    // same as Assign Rack's own save (see inboundGrnRackAssignedPayload).
     void persistUpdate({
       status: 'GRN Complete',
       qcStatus: 'Passed',
+      qcFastTrack: true,
       workflowSteps: steps,
     });
   };

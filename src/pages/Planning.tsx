@@ -2994,7 +2994,6 @@ const Planning = () => {
   const [swapPendingGroupRm, setSwapPendingGroupRm] = useState<{ id: number; name: string } | null>(null);
   const [swapApplying, setSwapApplying] = useState(false);
   const [bomSgSaving, setBomSgSaving] = useState(false);
-  const [sentBatchSizeSaving, setSentBatchSizeSaving] = useState(false);
   const [bomPackaging, setBomPackaging] = useState<PackagingMaterial[]>([]);
   const [isReadyForProduction, setIsReadyForProduction] = useState(false);
   const [productionSentOrderIds, setProductionSentOrderIds] = useState<string[]>([]);
@@ -6766,57 +6765,6 @@ const Planning = () => {
 
   const removePrLine = (index: number) => {
     setPrItems((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  /** Edit batch + already sent: persist preview qty as size_kg (no re-send). */
-  const handleSaveSentBatchSizeFromPreview = async (): Promise<void> => {
-    if (!selectedSOForBatch || !isSelectedBatchEditable || !isEditingExistingBatch || !isSelectedBatchAlreadySent) {
-      return;
-    }
-    if (selectedBatchId == null || selectedBatchPlanIndex < 0) {
-      addToast('error', 'Select a working batch first.');
-      return;
-    }
-    const orderQtyNum = (parseQtyLabelInt(selectedSOForBatch.orderQty) || 0);
-    const orderTotalKg = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
-    const kgPerUnit = orderQtyNum > 0 && orderTotalKg > 0 ? orderTotalKg / orderQtyNum : 0;
-    const previewUnits = Math.max(0, Math.floor(feasibilityPreviewQty || 0));
-    if (previewUnits <= 0) {
-      addToast('error', 'Enter a preview qty greater than zero.');
-      return;
-    }
-    if (kgPerUnit <= 0) {
-      addToast('error', 'Could not compute kg per unit for this order.');
-      return;
-    }
-    const sizeKg = previewUnits * kgPerUnit;
-    setSentBatchSizeSaving(true);
-    try {
-      const saved = await updatePlanningBatch(selectedSOForBatch.id, selectedBatchId, { sizeKg });
-      if (!saved) {
-        addToast('error', 'Failed to save batch size');
-        return;
-      }
-      mergePlanningBatchIntoListCache(queryClient, selectedSOForBatch.id, saved);
-      setCustomBatches((prev) => {
-        if (selectedBatchPlanIndex >= prev.length) return prev;
-        return prev.map((b, i) => (i === selectedBatchPlanIndex ? { ...b, sizeKg } : b));
-      });
-      batchPlanDirtyRef.current = false;
-      lastAppliedPreviewQtyRef.current = previewUnits;
-      queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
-      queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
-      queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
-      const label = selectedBatchCodeLabel || `B-${String(selectedBatchPlanSequence).padStart(2, '0')}`;
-      addToast(
-        'success',
-        `Batch ${label} size saved (${previewUnits.toLocaleString()} units · ${sizeKg.toFixed(2)} kg).`
-      );
-    } catch (e) {
-      addToast('error', e instanceof Error ? e.message : 'Could not save batch size');
-    } finally {
-      setSentBatchSizeSaving(false);
-    }
   };
 
   const handleSaveBatchPlan = async () => {
@@ -10933,9 +10881,9 @@ const Planning = () => {
                     className="rounded-lg border border-warn-soft bg-warn-soft px-4 py-3 text-sm text-warn"
                     role="status"
                   >
-                    This batch is <strong>already sent to Production</strong>. Change preview qty, then click{' '}
-                    <strong>Save size</strong> to update the batch (no re-send). Use <strong>Save BOM</strong> for
-                    formula changes. <strong>Send batch</strong> stays off — it only applies the first time.
+                    This batch is <strong>already sent to Production</strong>. Its quantity is locked — add units
+                    for the remaining order on the <strong>next</strong> batch instead. Use <strong>Save BOM</strong>{' '}
+                    for formula changes. <strong>Send batch</strong> stays off — it only applies the first time.
                   </div>
                 ) : (
                   <div
@@ -10952,8 +10900,8 @@ const Planning = () => {
                   className="rounded-lg border border-warn-soft bg-warn-soft px-4 py-3 text-sm text-warn"
                   role="status"
                 >
-                  This batch is <strong>sent to Production</strong> but still editable here until Production confirms
-                  the BMR. Use BOM Editor, Batch Plan, or Swap — changes save automatically for size/qty.
+                  This batch is <strong>sent to Production</strong> — its quantity is locked here. Use BOM Editor or
+                  Swap for formula changes; add units for the remaining order on the <strong>next</strong> batch.
                 </div>
               ) : null}
 
@@ -11185,7 +11133,7 @@ const Planning = () => {
                           type="number"
                           min={1}
                           value={feasibilityPreviewQty || ''}
-                          disabled={!isSelectedBatchEditable}
+                          disabled={!isSelectedBatchEditable || isSelectedBatchAlreadySent}
                           onChange={(e) => {
                             const v = e.target.value === '' ? 0 : parseInt(e.target.value.replace(/\D/g, ''), 10);
                             setFeasibilityPreviewQty(Number.isNaN(v) ? 0 : Math.max(0, v));
@@ -11194,17 +11142,6 @@ const Planning = () => {
                         />
                         <span className="text-[11px] font-semibold text-ink-3">units</span>
                       </div>
-                      {isEditingExistingBatch && isSelectedBatchAlreadySent && isSelectedBatchEditable ? (
-                        <button
-                          type="button"
-                          disabled={sentBatchSizeSaving || (feasibilityPreviewQty || 0) <= 0}
-                          onClick={() => void handleSaveSentBatchSizeFromPreview()}
-                          className="shrink-0 px-3 py-1.5 rounded-lg bg-brand hover:bg-brand text-xs font-bold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Save preview qty as batch size (batch already sent — no re-send)"
-                        >
-                          {sentBatchSizeSaving ? 'Saving…' : 'Save size'}
-                        </button>
-                      ) : null}
                       <button
                         type="button"
                         disabled={
@@ -11227,7 +11164,7 @@ const Planning = () => {
                         className="shrink-0 px-3 py-1.5 rounded-lg bg-ok hover:bg-ok text-xs font-bold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         title={
                           isSelectedBatchAlreadySent
-                            ? 'Already sent — use Save size to update qty on this batch'
+                            ? 'Already sent — qty is locked; add units for the remaining order on the next batch'
                             : !isWorkingBatchBomConfirmed
                             ? 'Confirm BOM for this batch in BOM Editor before sending'
                             : !canSendSelectedBatchPlan

@@ -127,7 +127,7 @@ describe('inboundGrnTableDisplay', () => {
       inboundGrnActionView({
         grnNo: 'x',
         status: 'On Hold',
-        workflowSteps: ['Sent to QC', 'Label Generation'],
+        workflowSteps: ['Sent to QC', 'Label Generation', 'Rack Assigned'],
         qcStatus: 'Passed',
         generatedLabels: [{}],
         locationPrefix: 'SW-R1',
@@ -231,7 +231,7 @@ describe('inboundGrnTableDisplay', () => {
   });
 });
 
-describe('isInboundGrnRacked — a rack literally named DEFAULT still counts', () => {
+describe('isInboundGrnRacked — DEFAULT requires an explicit assignment stamp', () => {
   /**
    * GRN-2026-0197 exactly as stored after Assign Rack: the user picked "DEFAULT — Default storage"
    * from Facility Management, an assignee is set, one post-racking photo is saved. The old check
@@ -263,11 +263,12 @@ describe('isInboundGrnRacked — a rack literally named DEFAULT still counts', (
     expect(inboundGrnActionView(racked0197).label).toBe('GRN Copy');
   });
 
-  it('counts saved post-racking photos when the step stamp is missing', () => {
-    // Rows racked before the stamp existed still carry their mandatory photos.
+  it('routes DEFAULT back to Assign Rack when the step stamp is missing', () => {
+    // DEFAULT may be a real facility rack, but the explicit assignment stamp is required to
+    // distinguish it from the system placeholder.
     const noStamp = { ...racked0197, workflowSteps: ['Receipt Confirmed', 'Sent to QC'] };
-    expect(isInboundGrnRacked(noStamp)).toBe(true);
-    expect(inboundGrnActionView(noStamp).label).toBe('GRN Copy');
+    expect(isInboundGrnRacked(noStamp)).toBe(false);
+    expect(inboundGrnActionView(noStamp).label).toBe('Assign Rack');
   });
 
   it('still treats a bare DEFAULT with no stamp and no photos as unracked', () => {
@@ -281,9 +282,10 @@ describe('isInboundGrnRacked — a rack literally named DEFAULT still counts', (
     expect(inboundGrnActionView(placeholder).label).toBe('Assign Rack');
   });
 
-  it('accepts a normal named rack as before', () => {
+  it('requires the assignment stamp for a normal named rack too', () => {
     const named = { ...racked0197, workflowSteps: [], sourceDocuments: {}, locationPrefix: 'A-01-03' };
-    expect(isInboundGrnRacked(named)).toBe(true);
+    expect(isInboundGrnRacked(named)).toBe(false);
+    expect(inboundGrnActionView(named).label).toBe('Assign Rack');
   });
 
   it('needs an assignee — GRN Copy cannot complete a GRN without one', () => {
