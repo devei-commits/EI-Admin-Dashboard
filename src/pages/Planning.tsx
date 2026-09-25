@@ -5,7 +5,7 @@ function fmtConnectingDate(raw: string): string {
   return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
 }
 
-import { useState, useMemo, useRef, useEffect, useCallback, useDeferredValue, type ReactElement, type ReactNode } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback, type ReactElement, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { CheckCircle2, ChevronDown, Layers, Loader2, MessageSquare, Search, X } from 'lucide-react';
@@ -21,7 +21,7 @@ import { DateRangeFilterInputs } from '../components/DateRangeFilterInputs';
 import { ProcFilterBar } from '../components/procurement/ProcSection';
 import { PlanningModalShell } from '../components/planning/PlanningModalShell';
 import { matchesDateRangeFilter } from '../utils/dateRangeFilter';
-import { parsePlanningSlaTimestamp, planningBomConfirmedAtIso } from '../utils/planningSlaDates';
+import { planningBomConfirmedAtIso } from '../utils/planningSlaDates';
 import {
   buildPisPlanStatusView,
   buildPisSlaView,
@@ -30,7 +30,6 @@ import {
   formatPisTableDate,
   getBatchesForPisOrder,
   lookupPisClientCode,
-  pisPlanStatusSortValue,
 } from '../lib/pisExtractedTableDisplay';
 import {
   buildPlanningBatchFulfillmentView,
@@ -82,6 +81,7 @@ import type { SoPlanningAvailabilityItem, SoPlanningAvailabilityResponse } from 
 import { fetchSoPlanningAvailability, fetchFulfillmentOrders, fetchSalesOrdersDashboard } from '../services/fulfillment.service';
 import {
   fetchPlanningExtractedList,
+  fetchPlanningExtractedPage,
   fetchPlanningExtractedById,
   updatePlanningExtracted,
   fetchBomOverride,
@@ -103,11 +103,14 @@ import {
   type ItemsInvolvedRow,
   type ItemsInvolvedRefBreakdown,
   type PlanningExtractedRow,
+  type PlanningExtractedStats,
+  type PisStatusFilter,
   type PlanningBatchRow,
   type PlanningBatchAllRow,
   type PendingReservationLine,
   type PlanningBatchCoverageLine,
 } from '../services/planningExtracted.service';
+import { useDebounce } from '../hooks/useDebounce';
 import { RequestQuotationModal, type RequestQuotationContext } from '../components/procurement/RequestQuotationModal';
 import {
   createProcurementRequest,
@@ -1030,46 +1033,6 @@ type PisOrderSortColumn =
   | 'planStatus'
   | 'planningSla';
 
-function sortValueForPisOrder(
-  order: SalesOrder,
-  col: PisOrderSortColumn,
-  nowMs: number = Date.now(),
-  pisSortCtx?: {
-    allBatches: PlanningBatchAllRow[];
-    prodByPlanningBatchId: Map<number, BatchRow>;
-  },
-): string | number {
-  switch (col) {
-    case 'soDate':
-      return order.orderDate ? new Date(order.orderDate).getTime() : 0;
-    case 'soNo':
-      return order.soNumber || '';
-    case 'client':
-      return order.customerName || '';
-    case 'productCode':
-      return order.productCode || '';
-    case 'productName':
-      return order.productName || '';
-    case 'ordQty':
-      return parseUnitCount(order.orderQty);
-    case 'planStatus': {
-      const batches = pisSortCtx
-        ? getBatchesForPisOrder(order, pisSortCtx.allBatches)
-        : [];
-      const view = buildPisPlanStatusView(
-        order,
-        batches,
-        pisSortCtx?.prodByPlanningBatchId ?? new Map(),
-      );
-      return pisPlanStatusSortValue(view);
-    }
-    case 'planningSla':
-      return getPlanningSlaMeta(order, getCreatedAndRemainingUnits(order).remainingUnits, nowMs).elapsedHours;
-    default:
-      return '';
-  }
-}
-
 type ItemsInvolvedSortColumn =
   | 'itemCode'
   | 'itemName'
@@ -1414,11 +1377,6 @@ function rmProcurementFieldsFromKg(
 }
 
 /** For PIs Extracted table: planned units created from saved custom batch kg, else fallback from batch count × batch size. */
-/** Lower-cased, whitespace-collapsed text for substring search. */
-function normalizeForSearch(value: unknown): string {
-  return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
 function getCreatedAndRemainingUnits(order: SalesOrder): { createdUnits: number; remainingUnits: number } {
   const orderUnits = parseUnitCount(order.orderQty);
   if (orderUnits <= 0) return { createdUnits: 0, remainingUnits: 0 };
@@ -1481,47 +1439,6 @@ function getPisBatchStatusTag(order: SalesOrder): PisBatchStatusTag {
   }
 
   return { text: 'Not planned', ...gray };
-}
-
-function formatPlanningSlaClock(elapsedHours: number): string {
-  const hrs = Math.floor(elapsedHours);
-  const mins = Math.floor((elapsedHours - hrs) * 60);
-  if (hrs === 0 && mins === 0 && elapsedHours > 0) return '< 1m / 48h';
-  return `${hrs}h ${mins}m / 48h`;
-}
-
-/** Live SLA for open rows; frozen stop time for fully planned rows (from BOM confirm or API snapshot). */
-function getPlanningSlaMeta(
-  order: SalesOrder,
-  remainingUnits: number,
-  nowMs: number = Date.now(),
-): {
-  elapsedHours: number;
-  label: string;
-  sub: string;
-  tone: 'green' | 'amber' | 'red';
-} {
-  const start =
-    parsePlanningSlaTimestamp(order.createdAt) ??
-    parsePlanningSlaTimestamp(order.orderDate) ??
-    new Date(nowMs);
-  const now = new Date(nowMs);
-  let stopAt = now;
-  if (remainingUnits <= 0) {
-    const confirmedAt = parsePlanningSlaTimestamp(order.bomConfirmedAt ?? null);
-    const frozenFromApi = parsePlanningSlaTimestamp(order.planningSla?.stoppedAt ?? null);
-    stopAt = confirmedAt ?? frozenFromApi ?? now;
-    if (stopAt.getTime() > now.getTime()) stopAt = now;
-  }
-  const elapsedHours = Math.max(0, (stopAt.getTime() - start.getTime()) / (1000 * 60 * 60));
-  const clock = formatPlanningSlaClock(elapsedHours);
-  if (remainingUnits <= 0) {
-    if (elapsedHours < 48) return { elapsedHours, label: `Completed ${clock}`, sub: 'Completed on time', tone: 'green' };
-    return { elapsedHours, label: `Completed ${clock}`, sub: 'Completed late', tone: 'red' };
-  }
-  if (elapsedHours < 36) return { elapsedHours, label: clock, sub: 'Running (< 36h)', tone: 'green' };
-  if (elapsedHours < 48) return { elapsedHours, label: clock, sub: 'Nearing breach (36–48h)', tone: 'amber' };
-  return { elapsedHours, label: clock, sub: `Breached by ${Math.max(0, Math.floor(elapsedHours - 48))}h`, tone: 'red' };
 }
 
 function getBatchLifecycleStatus(row: PlanningBatchAllRow): 'Planned' | 'In Mfg' | 'In QC' | 'Released' | 'On Hold' {
@@ -2550,7 +2467,10 @@ function PlanningBatchesTab({
       .join(' ');
     return haystack.includes(q);
   });
-  const filteredRows = searchedRows.filter((row) => {
+  // Batches that have already reached a fulfilled/terminal state (invoiced or beyond) are done —
+  // they no longer need action from Planning, so they're dropped from this table.
+  const FULFILLED_FF_STATUSES = ['invoiced', 'shipped', 'delivered', 'closed'];
+  const lifecycleFilteredRows = searchedRows.filter((row) => {
     if (batchTypeFilter === 'all') return true;
     const st = getBatchLifecycleStatus(row);
     if (batchTypeFilter === 'planned') return st === 'Planned';
@@ -2559,6 +2479,11 @@ function PlanningBatchesTab({
     if (batchTypeFilter === 'released') return st === 'Released';
     if (batchTypeFilter === 'on-hold') return st === 'On Hold';
     return true;
+  });
+  const filteredRows = lifecycleFilteredRows.filter((row) => {
+    const prod = prodByPlanningBatchId.get(row.id);
+    const ffStatus = prod?._pk != null ? ffStatusByProductionBatchId.get(Number(prod._pk)) : undefined;
+    return !ffStatus || !FULFILLED_FF_STATUSES.includes(ffStatus);
   });
 
   const uniqueSoNos = useMemo(
@@ -2884,6 +2809,17 @@ function PlanningBatchesTab({
   );
 }
 
+// Stable (module-level) fallbacks for the paginated PIs Extracted query, so a loading/undefined
+// response doesn't hand downstream useMemo hooks a new [] / {} reference every render.
+const EMPTY_PIS_PAGE_ROWS: PlanningExtractedRow[] = [];
+const EMPTY_PIS_STATS: PlanningExtractedStats = {
+  distinctSOs: 0,
+  totalPIs: 0,
+  batchesRequired: 0,
+  bomsConfirmed: 0,
+  notPlanned: 0,
+};
+
 const Planning = () => {
   const { addToast } = useToast();
   const navigate = useNavigate();
@@ -2934,10 +2870,11 @@ const Planning = () => {
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [searchTerm, setSearchTerm] = useState('');
   /**
-   * Filtering runs against a deferred copy of the query, so keystrokes paint immediately and the
-   * (heavier) row filter catches up. Without this every character blocked on re-filtering the list.
+   * Search/status/date now drive a server-paginated query (see fetchPlanningExtractedPage below),
+   * so the search term is debounced instead of just deferred — otherwise every keystroke would fire
+   * its own network request.
    */
-  const deferredPisSearch = useDeferredValue(searchTerm);
+  const debouncedPisSearch = useDebounce(searchTerm, 300);
   const [dateFilter, setDateFilter] = useState({ from: '', to: '' });
   const [pisPage, setPisPage] = useState(1);
   const [pisPageSize, setPisPageSize] = useState(20);
@@ -3080,11 +3017,51 @@ const Planning = () => {
   const [sendToProductionSending, setSendToProductionSending] = useState(false);
   const [sendToProductionSuccess, setSendToProductionSuccess] = useState<null | { title: string; message: string }>(null);
 
-  // Planning list: used for PIs Extracted tab and tab stats
-  const { data: planningExtractedList = [], isLoading: planningLoading } = useQuery({
+  // PIs Extracted tab: server-paginated — search/status/date-range/sort run on the backend, and only
+  // the current page's rows (with their rawMaterials/packagingMaterials line items) cross the wire,
+  // instead of every planning-extracted row every time this page loads. `stats` (Active SOs,
+  // Shortages base counts, BOMs Confirmed, etc.) is computed server-side over the FULL set and comes
+  // back alongside the page, so the top-of-page KPI cards don't need a separate full fetch either.
+  const {
+    data: pisPageData,
+    isLoading: planningLoading,
+  } = useQuery({
+    queryKey: [
+      'planning-extracted-page',
+      pisPage,
+      pisPageSize,
+      statusFilter,
+      debouncedPisSearch,
+      dateFilter.from,
+      dateFilter.to,
+      pisSortColumn,
+      pisSortDirection,
+    ],
+    queryFn: () =>
+      fetchPlanningExtractedPage({
+        limit: pisPageSize,
+        offset: (pisPage - 1) * pisPageSize,
+        search: debouncedPisSearch,
+        status: statusFilter as PisStatusFilter,
+        from: dateFilter.from,
+        to: dateFilter.to,
+        sortBy: pisSortColumn,
+        sortDir: pisSortDirection,
+      }),
+    placeholderData: (prev) => prev,
+  });
+  const pisPageRows = pisPageData?.rows ?? EMPTY_PIS_PAGE_ROWS;
+  const pisTotalRows = pisPageData?.total ?? 0;
+  const pisStats: PlanningExtractedStats = pisPageData?.stats ?? EMPTY_PIS_STATS;
+
+  // Items Involved tab only: product filter dropdown + date-range linking need (near-)every
+  // planning row, not a page of them — see buildPlanningProductFilterOptions below. Lazy: only
+  // fetched once that tab is actually opened, so opening Planning to the PIs Extracted tab (the
+  // default) never triggers a full bulk fetch.
+  const { data: planningExtractedList = [] } = useQuery({
     queryKey: ['planning-extracted'],
     queryFn: fetchPlanningExtractedList,
-    enabled: true,
+    enabled: activeMainTab === 'items-involved',
   });
 
   // Used by Items Involved tab for "Planned line" badge + "Previous purchases" modal.
@@ -4975,21 +4952,8 @@ const Planning = () => {
 
   // Tab-specific stats — derived from API data (planning-extracted, items-involved, procurement)
   const tabStats = useMemo(() => {
-    // planningExtractedList is one row per product line (PI). Count distinct sales orders for the "SO"
-    // KPIs, and keep the PI count for the "products" KPIs.
-    const soKey = (r: unknown) => String((r as { soNumber?: string }).soNumber ?? '').trim().toUpperCase();
-    const isBomConfirmed = (r: unknown) => (r as { bomConfirmedAt?: string }).bomConfirmedAt != null;
-    const distinctSOs = new Set(planningExtractedList.map(soKey).filter(Boolean)).size; // unique sales orders
-    const totalPIs = planningExtractedList.length;                                       // product plans (PIs)
-    // "Prod. Released" = number of batches that exist in the Production module (created once a
-    // planning batch is sent to production), not the count of PIs flagged 'Production Released'.
-    const prodReleased = (productionBatches as BatchRow[]).length;
-    const batchesRequired = planningExtractedList.reduce((s, r) => s + (r.batchesRequired ?? 0), 0);
-    const bomsConfirmed = planningExtractedList.filter(isBomConfirmed).length;           // PIs with a confirmed BOM
-    // SOs still pending planning = distinct SOs that have at least one PI whose BOM isn't confirmed.
-    const notPlanned = new Set(
-      planningExtractedList.filter((r) => !isBomConfirmed(r)).map(soKey).filter(Boolean),
-    ).size;
+    // pisStats is computed server-side over the FULL (unfiltered) planning-extracted set and comes
+    // back alongside the current PIs Extracted page — see fetchPlanningExtractedPage above.
     const itemShortages = itemsInvolvedRows.filter((r) => r.surplusShortage < 0).length;
     const rmItems = itemsInvolvedRows.filter((r) => r.type === 'RM');
     const pmItems = itemsInvolvedRows.filter((r) => r.type === 'PM');
@@ -5005,16 +4969,18 @@ const Planning = () => {
 
     return {
       'pis-extracted': {
-        totalSOs: distinctSOs,
-        prodReleased,
+        totalSOs: pisStats.distinctSOs,
+        // "Prod. Released" = number of batches that exist in the Production module (created once a
+        // planning batch is sent to production), not the count of PIs flagged 'Production Released'.
+        prodReleased: (productionBatches as BatchRow[]).length,
         shortages: itemShortages,
-        batchesRequired,
-        batchesConfirmed: bomsConfirmed, // rendered under the "BOMs Confirmed" label
-        notPlanned,
+        batchesRequired: pisStats.batchesRequired,
+        batchesConfirmed: pisStats.bomsConfirmed, // rendered under the "BOMs Confirmed" label
+        notPlanned: pisStats.notPlanned,
         soValue: 'N/A',
       },
       'items-involved': {
-        confirmedProducts: { value: bomsConfirmed, total: totalPIs }, // products = PIs, not SOs
+        confirmedProducts: { value: pisStats.bomsConfirmed, total: pisStats.totalPIs }, // products = PIs, not SOs
         rmItems: { value: rmItems.length, ok: rmOk, short: rmShort },
         pmItems: { value: pmItems.length, ok: pmOk, short: pmShort },
         rmShortages: rmShort,
@@ -5022,7 +4988,7 @@ const Planning = () => {
         prsRaised: openPrs,
       },
     };
-  }, [planningExtractedList, itemsInvolvedRows, procurementRequests, productionBatches]);
+  }, [pisStats, itemsInvolvedRows, procurementRequests, productionBatches]);
 
   /** PIs + Batches tabs share order-level KPIs; Items Involved uses its own breakdown. */
   const currentStats =
@@ -5033,6 +4999,7 @@ const Planning = () => {
 
   const [salesOrders] = useState<SalesOrder[]>(initialSalesOrders);
 
+  /** Items Involved tab only — needs the (near-)full planning list; see planningExtractedList above. */
   const planningExtractedIdsInDateRange = useMemo(() => {
     const ids = new Set<string>();
     for (const order of pisRows) {
@@ -5042,100 +5009,9 @@ const Planning = () => {
     return ids;
   }, [pisRows, dateFilter]);
 
-  /**
-   * Searchable text per PIs row, rebuilt only when the rows change.
-   *
-   * The filter used to normalise every field of every row on each keystroke — roughly seven
-   * lower-case/whitespace passes per row — which is why this search felt slower than other modules.
-   */
-  const pisSearchIndex = useMemo(
-    () =>
-      pisRows.map((order) => {
-        const o = order as SalesOrder & {
-          clientName?: string;
-          customer_name?: string;
-          client_name?: string;
-        };
-        return normalizeForSearch(
-          [
-            o.productName,
-            o.productCode,
-            o.soNumber,
-            o.customerName,
-            o.clientName,
-            o.customer_name,
-            o.client_name,
-          ].join(' '),
-        );
-      }),
-    [pisRows],
-  );
-
-  const filteredPisOrders = useMemo(() => {
-    // The query is normalised ONCE, not per row. It used to be recomputed inside the loop, so a
-    // 300-row list normalised the same string 300 times on every keystroke.
-    const q = normalizeForSearch(deferredPisSearch);
-
-    return pisRows.filter((order, idx) => {
-      if (!matchesDateRangeFilter(order.orderDate, dateFilter.from, dateFilter.to)) return false;
-
-      // getCreatedAndRemainingUnits parses qty/kg labels for every row. Only "Not Planned" needs it,
-      // so it is no longer run for the other four filter states.
-      const matchesStatus =
-        statusFilter === 'All' ||
-        (statusFilter === 'Prod Released' && order.bomStatus === 'Production Released') ||
-        (statusFilter === 'In Progress' && order.bomStatus === 'In Progress') ||
-        (statusFilter === 'Planned' && order.bomStatus === 'Planned') ||
-        (statusFilter === 'Not Planned' &&
-          getCreatedAndRemainingUnits(order).remainingUnits > 0 &&
-          (Number(order.batchCount) || 0) === 0);
-
-      if (!q) return matchesStatus;
-      if (!matchesStatus) return false;
-      // Pre-built, memoised per row — a keystroke is now one substring test per row instead of
-      // seven string normalisations.
-      return (pisSearchIndex[idx] ?? '').includes(q);
-    });
-  }, [pisRows, pisSearchIndex, statusFilter, deferredPisSearch, dateFilter]);
-
   useEffect(() => {
     setPisPage(1);
   }, [statusFilter, searchTerm, dateFilter.from, dateFilter.to, pisPageSize, pisSortColumn, pisSortDirection]);
-
-  const sortedFilteredPisOrders = useMemo(() => {
-    const nowMs = Date.now();
-    const pisSortCtx = {
-      allBatches: allPlanningBatches as PlanningBatchAllRow[],
-      prodByPlanningBatchId,
-    };
-    if (!pisSortColumn) {
-      // Default (spec §3): Plan Status ASC (un-planned first), then SO Date DESC.
-      return [...filteredPisOrders].sort((a, b) => {
-        const cmpStatus = compareSortValues(
-          sortValueForPisOrder(a, 'planStatus', nowMs, pisSortCtx),
-          sortValueForPisOrder(b, 'planStatus', nowMs, pisSortCtx),
-          'asc'
-        );
-        if (cmpStatus !== 0) return cmpStatus;
-        const cmpDate = compareSortValues(
-          sortValueForPisOrder(a, 'soDate', nowMs, pisSortCtx),
-          sortValueForPisOrder(b, 'soDate', nowMs, pisSortCtx),
-          'desc'
-        );
-        if (cmpDate !== 0) return cmpDate;
-        return String(a.id).localeCompare(String(b.id), undefined, { numeric: true, sensitivity: 'base' });
-      });
-    }
-    return [...filteredPisOrders].sort((a, b) => {
-      const cmp = compareSortValues(
-        sortValueForPisOrder(a, pisSortColumn, nowMs, pisSortCtx),
-        sortValueForPisOrder(b, pisSortColumn, nowMs, pisSortCtx),
-        pisSortDirection
-      );
-      if (cmp !== 0) return cmp;
-      return String(a.id).localeCompare(String(b.id), undefined, { numeric: true, sensitivity: 'base' });
-    });
-  }, [filteredPisOrders, pisSortColumn, pisSortDirection, slaClockTick, allPlanningBatches, prodByPlanningBatchId]);
 
   const togglePisSort = (column: PisOrderSortColumn) => {
     if (pisSortColumn === column) {
@@ -5146,68 +5022,109 @@ const Planning = () => {
     setPisSortDirection('asc');
   };
 
-  const pisTotalPages = Math.max(1, Math.ceil(sortedFilteredPisOrders.length / pisPageSize));
+  // The current page's rows, already filtered/sorted/paginated server-side.
+  const pagedPisOrders: SalesOrder[] = useMemo(
+    () => pisPageRows.map(apiRowToSalesOrder),
+    [pisPageRows]
+  );
+  const pisTotalPages = Math.max(1, Math.ceil(pisTotalRows / pisPageSize));
   const safePisPage = Math.min(pisPage, pisTotalPages);
-  const pagedPisOrders = useMemo(() => {
-    const start = (safePisPage - 1) * pisPageSize;
-    return sortedFilteredPisOrders.slice(start, start + pisPageSize);
-  }, [sortedFilteredPisOrders, safePisPage, pisPageSize]);
+  // Guard against a stale page number past the end (e.g. a filter/edit shrank the result set from
+  // under it) — clamp back rather than requesting an out-of-range offset from the server.
+  useEffect(() => {
+    if (pisPage > pisTotalPages) setPisPage(pisTotalPages);
+  }, [pisPage, pisTotalPages]);
 
-  const handleExportPisCsv = useCallback(() => {
-    const header = [
-      'SO Date',
-      'SO #',
-      'Client',
-      'Product Code',
-      'Product Name',
-      'Ord Qty',
-      'Plan Status (Batch # · units · % cov · stage)',
-      'Planning SLA',
-      'Action',
-    ];
-    const rows = filteredPisOrders.map((order) => {
-      const batches = getBatchesForPisOrder(order, allPlanningBatches as PlanningBatchAllRow[]);
-      const planView = buildPisPlanStatusView(order, batches, prodByPlanningBatchId);
-      const { remainingUnits } = getCreatedAndRemainingUnits(order);
-      const sla = buildPisSlaView(order, batches.length > 0, remainingUnits);
-      const clientCode = lookupPisClientCode(order.customerName, pisClientRecords);
-      const planStatusText =
-        planView.kind === 'pending'
-          ? 'PLANNING PENDING · no batch yet'
-          : [
-              ...planView.batchLines.map(
-                (line) => `${line.batchLabel} · ${line.units} · ${line.coveragePct}% · ${line.stage}`,
-              ),
-              planView.summary,
-              planView.underCoveredUnits > 0
-                ? `Under-covered · ${planView.underCoveredUnits} units still to plan`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(' | ');
-      return [
-        formatPisTableDate(order.orderDate),
-        order.soNumber || '',
-        clientCode ? `${order.customerName || ''} (${clientCode})` : order.customerName || '',
-        order.productCode || '',
-        order.productName || '',
-        formatPisOrdQty(order.orderQty),
-        planStatusText,
-        [sla.icon, sla.text, sla.sub].filter(Boolean).join(' '),
-        batches.length > 0 ? 'Edit Plan' : 'Plan Batches',
+  const [exportingPisCsv, setExportingPisCsv] = useState(false);
+
+  // Exports every row matching the CURRENT filters, not just the loaded page — so it fetches its own
+  // (large, one-off) copy of the filtered+sorted set from the server on click, instead of keeping
+  // that full set resident in memory on every render just in case someone exports.
+  const handleExportPisCsv = useCallback(async () => {
+    setExportingPisCsv(true);
+    try {
+      const full = await fetchPlanningExtractedPage({
+        limit: 100000,
+        offset: 0,
+        search: debouncedPisSearch,
+        status: statusFilter as PisStatusFilter,
+        from: dateFilter.from,
+        to: dateFilter.to,
+        sortBy: pisSortColumn,
+        sortDir: pisSortDirection,
+      });
+      const orders = full.rows.map(apiRowToSalesOrder);
+
+      const header = [
+        'SO Date',
+        'SO #',
+        'Client',
+        'Product Code',
+        'Product Name',
+        'Ord Qty',
+        'Plan Status (Batch # · units · % cov · stage)',
+        'Planning SLA',
+        'Action',
       ];
-    });
-    const csv = [header, ...rows]
-      .map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `planning-pis-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [filteredPisOrders, allPlanningBatches, prodByPlanningBatchId, pisClientRecords]);
+      const rows = orders.map((order) => {
+        const batches = getBatchesForPisOrder(order, allPlanningBatches as PlanningBatchAllRow[]);
+        const planView = buildPisPlanStatusView(order, batches, prodByPlanningBatchId);
+        const { remainingUnits } = getCreatedAndRemainingUnits(order);
+        const sla = buildPisSlaView(order, batches.length > 0, remainingUnits);
+        const clientCode = lookupPisClientCode(order.customerName, pisClientRecords);
+        const planStatusText =
+          planView.kind === 'pending'
+            ? 'PLANNING PENDING · no batch yet'
+            : [
+                ...planView.batchLines.map(
+                  (line) => `${line.batchLabel} · ${line.units} · ${line.coveragePct}% · ${line.stage}`,
+                ),
+                planView.summary,
+                planView.underCoveredUnits > 0
+                  ? `Under-covered · ${planView.underCoveredUnits} units still to plan`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' | ');
+        return [
+          formatPisTableDate(order.orderDate),
+          order.soNumber || '',
+          clientCode ? `${order.customerName || ''} (${clientCode})` : order.customerName || '',
+          order.productCode || '',
+          order.productName || '',
+          formatPisOrdQty(order.orderQty),
+          planStatusText,
+          [sla.icon, sla.text, sla.sub].filter(Boolean).join(' '),
+          batches.length > 0 ? 'Edit Plan' : 'Plan Batches',
+        ];
+      });
+      const csv = [header, ...rows]
+        .map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+        .join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `planning-pis-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      addToast('error', 'Could not export CSV. Please try again.');
+    } finally {
+      setExportingPisCsv(false);
+    }
+  }, [
+    debouncedPisSearch,
+    statusFilter,
+    dateFilter.from,
+    dateFilter.to,
+    pisSortColumn,
+    pisSortDirection,
+    allPlanningBatches,
+    prodByPlanningBatchId,
+    pisClientRecords,
+    addToast,
+  ]);
 
   const visiblePisSoNos = useMemo(
     () => Array.from(new Set(pagedPisOrders.map((o) => String(o.soNumber || '').trim()).filter(Boolean))),
@@ -6455,8 +6372,11 @@ const Planning = () => {
     setBatchForDetailModal(row);
   }, []);
 
-  const handleEditBatchFromTab = (row: PlanningBatchAllRow) => {
-    const order = pisRows.find((o) => String(o.id) === String(row.planningExtractedId));
+  // Fetches the single planning-extracted row by id (rather than scanning a full in-memory list —
+  // the row being edited here may not be on the PIs Extracted tab's currently loaded page).
+  const handleEditBatchFromTab = async (row: PlanningBatchAllRow) => {
+    const apiRow = await fetchPlanningExtractedById(String(row.planningExtractedId));
+    const order = apiRow ? apiRowToSalesOrder(apiRow) : null;
     if (!order) {
       addToast('error', 'Planning record not found. Refresh and try again.');
       return;
@@ -6465,7 +6385,7 @@ const Planning = () => {
     setEditExistingBatchId(row.id);
     editBatchPreserveIdRef.current = row.id;
     setSelectedBatchId(row.id);
-    if (Boolean(order.bomConfirmedAt)) {
+    if (order.bomConfirmedAt) {
       setActiveBatchTab('batch-plan');
     }
     const oq = (parseQtyLabelInt(order.orderQty) || 0);
@@ -7837,9 +7757,10 @@ const Planning = () => {
                 <button
                   type="button"
                   onClick={handleExportPisCsv}
-                  className="ml-auto px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface text-ink-2 hover:bg-surface-3 transition-colors"
+                  disabled={exportingPisCsv}
+                  className="ml-auto px-3 py-1.5 text-xs font-semibold rounded-lg border border-border bg-surface text-ink-2 hover:bg-surface-3 transition-colors disabled:opacity-50"
                 >
-                  Export CSV
+                  {exportingPisCsv ? 'Exporting…' : 'Export CSV'}
                 </button>
               </div>
             </ProcFilterBar>
@@ -7850,7 +7771,7 @@ const Planning = () => {
                 <TableSkeleton rows={8} cols={7} />
               </div>
             )}
-            {!planningLoading && filteredPisOrders.length === 0 && (
+            {!planningLoading && pisTotalRows === 0 && (
               <div className="border border-border rounded-lg bg-surface">
                 <EmptyState
                   icon={<Layers />}
@@ -8158,10 +8079,10 @@ const Planning = () => {
                   </tbody>
                 </table>
               </div>
-              {!planningLoading && filteredPisOrders.length > 0 && (
+              {!planningLoading && pisTotalRows > 0 && (
                 <div className="flex items-center justify-between gap-3 px-3 py-2 border-t border-border bg-surface-2">
                   <div className="text-xs text-ink-2">
-                    Page {safePisPage} of {pisTotalPages} · Showing {pagedPisOrders.length} of {sortedFilteredPisOrders.length} rows
+                    Page {safePisPage} of {pisTotalPages} · Showing {pagedPisOrders.length} of {pisTotalRows} rows
                   </div>
                   <div className="flex items-center gap-2">
                     <select

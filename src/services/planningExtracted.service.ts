@@ -94,6 +94,66 @@ export async function fetchPlanningExtractedList(): Promise<PlanningExtractedRow
   return normalizePlanningExtractedListResponse(data);
 }
 
+/** Aggregate KPIs for the PIs Extracted tab cards, computed server-side over the full (unfiltered) set. */
+export interface PlanningExtractedStats {
+  distinctSOs: number;
+  totalPIs: number;
+  batchesRequired: number;
+  bomsConfirmed: number;
+  notPlanned: number;
+}
+
+export type PisStatusFilter = 'All' | 'Prod Released' | 'In Progress' | 'Planned' | 'Not Planned';
+export type PisSortColumn =
+  | 'soDate'
+  | 'soNo'
+  | 'client'
+  | 'productCode'
+  | 'productName'
+  | 'ordQty'
+  | 'planStatus'
+  | 'planningSla';
+
+/**
+ * Paginated PIs Extracted list — search/status/date filtering and sort run server-side (mirrors
+ * the client-side logic this replaces: pisSearchIndex / filteredPisOrders / sortValueForPisOrder),
+ * so only the current page's rows (with their rawMaterials/packagingMaterials line items) cross the
+ * wire instead of the entire dataset. `stats` is the same aggregate the KPI cards used to compute
+ * from the full bulk-fetched list, returned alongside the page so no second full fetch is needed.
+ */
+export async function fetchPlanningExtractedPage(opts: {
+  limit: number;
+  offset: number;
+  search?: string;
+  status?: PisStatusFilter;
+  from?: string;
+  to?: string;
+  sortBy?: PisSortColumn | null;
+  sortDir?: 'asc' | 'desc';
+}): Promise<PaginatedRows<PlanningExtractedRow> & { stats: PlanningExtractedStats }> {
+  const params = new URLSearchParams({
+    limit: String(opts.limit),
+    offset: String(opts.offset),
+  });
+  if (opts.search?.trim()) params.set('search', opts.search.trim());
+  if (opts.status && opts.status !== 'All') params.set('status', opts.status);
+  if (opts.from) params.set('from', opts.from);
+  if (opts.to) params.set('to', opts.to);
+  if (opts.sortBy) params.set('sortBy', opts.sortBy);
+  if (opts.sortDir) params.set('sortDir', opts.sortDir);
+
+  const empty = { rows: [], total: 0, limit: opts.limit, offset: opts.offset, stats: { distinctSOs: 0, totalPIs: 0, batchesRequired: 0, bomsConfirmed: 0, notPlanned: 0 } };
+  try {
+    const res = await api.get<PaginatedRows<PlanningExtractedRow> & { stats: PlanningExtractedStats }>(
+      `/api/v1/planning-extracted?${params.toString()}`
+    );
+    const data = (res as { data?: PaginatedRows<PlanningExtractedRow> & { stats: PlanningExtractedStats } })?.data ?? res;
+    return data && Array.isArray(data.rows) ? data : empty;
+  } catch {
+    return empty;
+  }
+}
+
 export async function fetchPlanningExtractedById(id: string): Promise<PlanningExtractedRow | null> {
   try {
     const res = await api.get<PlanningExtractedRow>(`/api/v1/planning-extracted/${id}`);

@@ -62,6 +62,8 @@ export type PaymentTerms = string;
 // ═══════════════════════════════════════════════════════════
 
 export interface BatchSplit {
+  /** fulfillment_batch_splits.id */
+  id?: number;
   productionBatchId?: number | null;
   bmrNo: string;
   bprNo: string;

@@ -522,7 +522,7 @@ export async function manualFulfillFulfillmentOrder(id: number): Promise<void> {
  */
 export async function fastForwardInvoiceForOrder(
   id: number,
-  lines: Array<{ itemId: number; qty: number }>
+  lines: Array<{ itemId: number; qty: number; splitId?: number }>
 ): Promise<void> {
   await api.post(`${BASE}/${id}/fast-forward-invoice`, { items: lines });
 }

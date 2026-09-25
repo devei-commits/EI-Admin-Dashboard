@@ -109,10 +109,25 @@ export function buildPlanningProductFilterOptions(
 
   const candidateIds = new Set<string>();
 
+  // Ids that still carry live, unfulfilled item demand (built from Items Involved rows, which
+  // already excludes batches that are fully fulfilled — see getFulfilledPlanningBatchIdSet on the
+  // backend). Always eligible for the filter.
+  const idsWithItems = new Set<string>();
+  for (const item of itemsRows) {
+    for (const peId of item.planningExtractedIds ?? []) {
+      idsWithItems.add(String(peId));
+    }
+  }
+
   for (const row of planningRows) {
     const id = String(row.id);
     if (!row.bomConfirmedAt) continue;
     if (!matchesDateRangeFilter(row.orderDate ?? '', dateFilter.from, dateFilter.to)) continue;
+    // A PI that already has batches but none of them still carry live item demand means every
+    // batch is fully fulfilled (invoiced/shipped/delivered/closed) — nothing left to release, so
+    // drop it instead of leaving a permanently empty "0/0" product selectable forever. A PI with
+    // no batches yet (batchCount 0) still shows, so it's selectable before anything is planned.
+    if ((row.batchCount ?? 0) > 0 && !idsWithItems.has(id)) continue;
     candidateIds.add(id);
   }
 
