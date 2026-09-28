@@ -3459,7 +3459,7 @@ const Planning = () => {
     planningBatches.length === 0 ||
     (selectedSOForBatch?.sentBatchIndices ?? []).some((x) => Number(x) === latestPlanningBatchIndex);
 
-  /** False once Production confirms the linked BMR (`bmr_status` past `draft`). */
+  /** False once the batch's dispensing tray is generated in Production (server-computed `editable`). */
   const isSelectedBatchEditable = useMemo((): boolean => {
     if (selectedBatchId == null) return true;
     const fromList = (planningBatches as PlanningBatchRow[]).find(
@@ -3480,7 +3480,10 @@ const Planning = () => {
     [planningBatches]
   );
 
-  /** Sent to planning/production but still editable until Production confirms the BMR. */
+  /** In-flight "Save qty" for a sent batch that is still before dispensing. */
+  const [sentBatchQtySaving, setSentBatchQtySaving] = useState(false);
+
+  /** Sent to production and its dispensing tray is already generated — size and BOM are fixed. */
   const isSentBatchIndexLocked = useCallback(
     (batchIndex: number): boolean => {
       const sent = selectedSOForBatch?.sentBatchIndices ?? [];
@@ -3847,11 +3850,12 @@ const Planning = () => {
     let soAllocKg = 0;
     let bufferKg = 0;
     customBatches.forEach((b, i) => {
-      // Once a batch is sent to Production its size is locked server-side (SENT_BATCH_SIZE_LOCKED)
-      // — the Preview qty box still shows/accepts input for it, but that number is no longer a real
-      // edit, so counting it here would show Pending drifting away from 0 as soon as the user typed
-      // anything other than the already-sent size. Always count a sent batch at its real stored size.
-      const useLivePreview = workingInList && i === workingBatchPlanIndex && !sent.includes(i);
+      // Once a sent batch's dispensing tray is generated its size is locked server-side
+      // (SENT_BATCH_SIZE_LOCKED) — the preview qty is no longer a real edit for it, so count it at its
+      // stored size. A sent batch still before dispensing can be resized (Save qty), so it tracks the
+      // live preview like an unsent one.
+      const useLivePreview =
+        workingInList && i === workingBatchPlanIndex && (!sent.includes(i) || getPlanningBatchEditableAtIndex(i));
       const size = useLivePreview ? previewKg : Number(b.sizeKg) || 0;
       if (bufferBatchIndexSet.has(i)) bufferKg += size;
       else soAllocKg += size;
@@ -3913,6 +3917,7 @@ const Planning = () => {
     feasibilityPreviewQty,
     workingBatchPlanIndex,
     bufferBatchIndexSet,
+    getPlanningBatchEditableAtIndex,
   ]);
 
   // When preview qty changes, reflect it once into the next active batch-units input in Batch Plan.
@@ -7063,6 +7068,47 @@ const Planning = () => {
     const remainingKg = Math.max(0, orderTotalKg - sentSoKg);
     const remainingUnits = kgPerUnit > 0 ? Math.round(remainingKg / kgPerUnit) : 0;
     return { batchLabel, nextBatchIndex, remainingUnits };
+  };
+
+  /**
+   * Resize a batch that is already sent to Production but whose dispensing tray is not generated yet.
+   * The backend re-checks the lock, caps the plan at the SO total and mirrors the size onto the
+   * linked Production batch.
+   */
+  const saveSentBatchQty = async () => {
+    if (!selectedSOForBatch || selectedBatchId == null || selectedBatchPlanIndex < 0) return;
+    if (!isSelectedBatchEditable) {
+      addToast('error', 'This batch is already on the dispensing tray in Production and can no longer be edited.');
+      return;
+    }
+    const orderQtyNum = parseQtyLabelInt(selectedSOForBatch.orderQty) || 0;
+    const orderTotalKg = parseFloat(selectedSOForBatch.totalKg?.replace(/[^\d.]/g, '') || '0') || 0;
+    const kgPerUnit = orderQtyNum > 0 && orderTotalKg > 0 ? orderTotalKg / orderQtyNum : 0;
+    const units = Math.max(0, Math.floor(feasibilityPreviewQty || 0));
+    if (kgPerUnit <= 0 || units <= 0) {
+      addToast('error', 'Enter a preview qty greater than 0 to save this batch.');
+      return;
+    }
+    const sizeKg = units * kgPerUnit;
+    const batchLabel = `B-${String(selectedBatchPlanSequence).padStart(2, '0')}`;
+    setSentBatchQtySaving(true);
+    try {
+      await updatePlanningBatch(selectedSOForBatch.id, selectedBatchId, { sizeKg });
+      setCustomBatches((prev) =>
+        prev.map((b, i) => (i === selectedBatchPlanIndex ? { ...b, sizeKg } : b))
+      );
+      batchPlanDirtyRef.current = false;
+      queryClient.invalidateQueries({ queryKey: ['planning-extracted'] });
+      queryClient.invalidateQueries({ queryKey: ['planning-batches', selectedSOForBatch.id] });
+      queryClient.invalidateQueries({ queryKey: ['planning', 'items-involved'] });
+      queryClient.invalidateQueries({ queryKey: ['planning-batches-all'] });
+      addToast('success', `${batchLabel} updated to ${units.toLocaleString()} units (${sizeKg.toFixed(1)} kg).`);
+    } catch (e) {
+      console.error('[Planning] save sent batch qty', e);
+      addToast('error', e instanceof Error ? e.message : 'Failed to save batch qty');
+    } finally {
+      setSentBatchQtySaving(false);
+    }
   };
 
   const runConfirmedSendToProduction = async () => {
@@ -10793,8 +10839,8 @@ const Planning = () => {
                   className="rounded-lg border border-err-soft bg-err-soft px-4 py-3 text-sm text-err"
                   role="status"
                 >
-                  This batch is <strong>confirmed by Production</strong> and is view-only. Quantities are fixed once
-                  manufacturing starts.
+                  This batch's <strong>dispensing tray is already generated</strong> in Production, so it is
+                  view-only. Quantity and BOM are fixed once dispensing starts.
                 </div>
               ) : isEditingExistingBatch ? (
                 isSelectedBatchAlreadySent ? (
@@ -10802,9 +10848,9 @@ const Planning = () => {
                     className="rounded-lg border border-warn-soft bg-warn-soft px-4 py-3 text-sm text-warn"
                     role="status"
                   >
-                    This batch is <strong>already sent to Production</strong>. Its quantity is locked — add units
-                    for the remaining order on the <strong>next</strong> batch instead. Use <strong>Save BOM</strong>{' '}
-                    for formula changes. <strong>Send batch</strong> stays off — it only applies the first time.
+                    This batch is <strong>already sent to Production</strong> but its dispensing tray is not generated
+                    yet, so it can still be edited. Change <strong>Preview qty</strong> and click{' '}
+                    <strong>Save qty</strong>; use <strong>Save BOM</strong> for formula changes.
                   </div>
                 ) : (
                   <div
@@ -10821,8 +10867,9 @@ const Planning = () => {
                   className="rounded-lg border border-warn-soft bg-warn-soft px-4 py-3 text-sm text-warn"
                   role="status"
                 >
-                  This batch is <strong>sent to Production</strong> — its quantity is locked here. Use BOM Editor or
-                  Swap for formula changes; add units for the remaining order on the <strong>next</strong> batch.
+                  This batch is <strong>sent to Production</strong> but not dispensed yet — change{' '}
+                  <strong>Preview qty</strong> and click <strong>Save qty</strong> to resize it. Use BOM Editor or Swap
+                  for formula changes.
                 </div>
               ) : null}
 
@@ -11054,7 +11101,7 @@ const Planning = () => {
                           type="number"
                           min={1}
                           value={feasibilityPreviewQty || ''}
-                          disabled={!isSelectedBatchEditable || isSelectedBatchAlreadySent}
+                          disabled={!isSelectedBatchEditable}
                           onChange={(e) => {
                             const v = e.target.value === '' ? 0 : parseInt(e.target.value.replace(/\D/g, ''), 10);
                             setFeasibilityPreviewQty(Number.isNaN(v) ? 0 : Math.max(0, v));
@@ -11063,12 +11110,26 @@ const Planning = () => {
                         />
                         <span className="text-[11px] font-semibold text-ink-3">units</span>
                       </div>
+                      {isSelectedBatchAlreadySent ? (
+                      <button
+                        type="button"
+                        disabled={!isSelectedBatchEditable || sentBatchQtySaving || selectedBatchId == null}
+                        onClick={() => { void saveSentBatchQty(); }}
+                        className="shrink-0 px-3 py-1.5 rounded-lg bg-ok hover:bg-ok text-xs font-bold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={
+                          !isSelectedBatchEditable
+                            ? 'Dispensing tray already generated in Production — qty is locked'
+                            : 'Save the new qty for this sent batch (allowed until its dispensing tray is generated)'
+                        }
+                      >
+                        {sentBatchQtySaving ? 'Saving…' : 'Save qty'}
+                      </button>
+                      ) : (
                       <button
                         type="button"
                         disabled={
                           !isWorkingBatchBomConfirmed ||
-                          !canSendSelectedBatchPlan ||
-                          isSelectedBatchAlreadySent
+                          !canSendSelectedBatchPlan
                         }
                         onClick={() => {
                           if (!isWorkingBatchBomConfirmed) {
@@ -11084,9 +11145,7 @@ const Planning = () => {
                         }}
                         className="shrink-0 px-3 py-1.5 rounded-lg bg-ok hover:bg-ok text-xs font-bold text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         title={
-                          isSelectedBatchAlreadySent
-                            ? 'Already sent — qty is locked; add units for the remaining order on the next batch'
-                            : !isWorkingBatchBomConfirmed
+                          !isWorkingBatchBomConfirmed
                             ? 'Confirm BOM for this batch in BOM Editor before sending'
                             : !canSendSelectedBatchPlan
                               ? 'Choose a working batch in the bar above'
@@ -11095,6 +11154,7 @@ const Planning = () => {
                       >
                         Send batch
                       </button>
+                      )}
                     </div>
                     {selectedBatchId != null && (
                       <span className="text-[11px] text-ink-3">
