@@ -313,6 +313,9 @@ function ItemWithBatches({
     0
   );
   const itemValue = item.orderedQty * item.unitPrice;
+  // SO create/import seeds a placeholder split (production_batch_id null) per line; it only becomes a
+  // batch once Planning links a production batch to it, so list just the linked splits here.
+  const createdSplits = item.batchSplits.filter((sp) => sp.productionBatchId != null);
 
   return (
     <div className="border border-border rounded-xl overflow-hidden mb-4">
@@ -393,14 +396,14 @@ function ItemWithBatches({
             cols={['Batch No', 'Planned', 'FG Output', 'FG Location', 'Picked', 'Invoice', 'AWB / Courier', 'Status', 'Actions']}
           />
           <tbody>
-            {item.batchSplits.length === 0 ? (
+            {createdSplits.length === 0 ? (
               <tr>
                 <td colSpan={9} className="py-6 text-center text-ink-3 text-sm">
                   No production batches linked yet.
                 </td>
               </tr>
             ) : (
-              item.batchSplits.map((sp, sidx) => (
+              createdSplits.map((sp, sidx) => (
                 <BatchRow
                   key={sidx}
                   batchNo={sidx + 1}
