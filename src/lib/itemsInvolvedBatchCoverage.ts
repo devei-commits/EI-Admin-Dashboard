@@ -13,10 +13,11 @@
  *     stock is therefore counted nowhere here, and a batch arriving tomorrow will read red. That is
  *     a deliberate choice; widening supply is a one-line change in `batchCoverageTier`.
  *
- * Batches are judged INDEPENDENTLY: each is compared against the whole SIH/PO rather than consuming
- * a running pool, so the same stock legitimately backs several rows at once. The colours rank each
- * batch's size against available supply — they do not claim the set is collectively satisfiable.
- * The item-level gate below is what signals an overall shortfall.
+ * Batches draw on ONE running pool (`poolCoverageTiers`): free stock first, then the PO, in need
+ * order (earliest due date first). Judging each batch against the whole SIH on its own let one
+ * 5,000-pc stock back every row — all 312 batches of a sticker read IN STOCK while the item was
+ * 21,146 pcs short. With a pool, the tags add up: the batches stock can cover read IN STOCK, the
+ * next ones NEEDS PO, the rest SHORT.
  */
 
 import { roundMaterialQty } from '../utils/formatQty';
@@ -65,6 +66,51 @@ export function batchCoverageTier(args: {
   if (batchQty <= sih) return 'pink';
   if (batchQty <= sih + poQty) return 'yellow';
   return 'red';
+}
+
+/** Need order for the pool: earliest due date first (undated last), then SO, then batch sequence. */
+function compareByNeed(a: PlanningBatchAllRow, b: PlanningBatchAllRow): number {
+  const da = a.dueDate ? Date.parse(a.dueDate) : NaN;
+  const db = b.dueDate ? Date.parse(b.dueDate) : NaN;
+  const ka = Number.isFinite(da) ? da : Number.POSITIVE_INFINITY;
+  const kb = Number.isFinite(db) ? db : Number.POSITIVE_INFINITY;
+  if (ka !== kb) return ka < kb ? -1 : 1;
+  const so = String(a.soNumber ?? '').localeCompare(String(b.soNumber ?? ''));
+  if (so !== 0) return so;
+  return (Number(a.sequence) || 0) - (Number(b.sequence) || 0);
+}
+
+/**
+ * Tier for each batch, with all of them drawing on one pool of supply: free stock first, then the
+ * open PO, consumed in need order. A batch is IN STOCK when stock still covers it after every
+ * earlier-due batch has taken its share, NEEDS PO when only stock + PO does, SHORT otherwise.
+ * When the item's total is covered every batch is green. Keyed by `releaseBatchPickKey`, so the
+ * item modal, the item row and the Batches tab all read the same tier for a batch.
+ */
+export function poolCoverageTiers(
+  batches: PlanningBatchAllRow[],
+  qtyByKey: Map<string, number>,
+  sih: unknown,
+  poQty: unknown,
+): Map<string, BatchCoverageTier> {
+  const stock = clampQty(sih);
+  const supply = stock + clampQty(poQty);
+  const qtyOf = (b: PlanningBatchAllRow) => clampQty(qtyByKey.get(releaseBatchPickKey(b)));
+  const total = batches.reduce((sum, b) => sum + qtyOf(b), 0);
+  const fullyCovered = isItemFullyCovered(total, stock, supply - stock);
+
+  const out = new Map<string, BatchCoverageTier>();
+  let consumed = 0;
+  for (const batch of [...batches].sort(compareByNeed)) {
+    const qty = qtyOf(batch);
+    const key = releaseBatchPickKey(batch);
+    if (qty <= 0) { out.set(key, 'none'); continue; }
+    consumed += qty;
+    // Small tolerance so float sums (0.1 + 0.2) don't tip an exactly-covered batch over a boundary.
+    const eps = 1e-6;
+    out.set(key, fullyCovered ? 'green' : consumed <= stock + eps ? 'pink' : consumed <= supply + eps ? 'yellow' : 'red');
+  }
+  return out;
 }
 
 /**
@@ -327,7 +373,9 @@ export function allocateConsolidatedReqAcrossBatches(
       const kgPerUnit = orderQty > 0 && totalKg > 0 ? totalKg / orderQty : 0;
       const unitsForBatch = kgPerUnit > 0 ? sizeKg / kgPerUnit : 0;
       const qtyPerUnit = Number(line.qty_per_unit ?? line.qty ?? 1) || 1;
-      out.set(key, Math.round(unitsForBatch * qtyPerUnit));
+      // Exact, like RM and the backend's Total Req — rounding each batch to whole pieces first made
+      // the modal total drift from Total Req and showed fractional-need batches as blank (0).
+      out.set(key, roundMaterialQty(unitsForBatch * qtyPerUnit));
     }
   }
   return out;
@@ -379,16 +427,12 @@ export function batchCoverageDetailMap(
     if (sentBatches.length === 0) continue;
 
     const alloc = allocateConsolidatedReqAcrossBatches(item, itemBatches);
-    const batchQtys = sentBatches.map((b) => Number(alloc.get(releaseBatchPickKey(b))) || 0);
-    const sih = Number(item.sihNum) || 0;
-    const poQty = Number(item.poQtyNum) || 0;
-    const totalRequired = batchQtys.reduce((sum, qty) => sum + qty, 0);
-    const itemFullyCovered = isItemFullyCovered(totalRequired, sih, poQty);
+    const tiers = poolCoverageTiers(sentBatches, alloc, item.sihNum, item.poQtyNum);
 
-    sentBatches.forEach((batch, i) => {
-      const tier = batchCoverageTier({ batchQty: batchQtys[i], sih, poQty, itemFullyCovered });
-      if (tier === 'none') return;
+    sentBatches.forEach((batch) => {
       const key = releaseBatchPickKey(batch);
+      const tier = tiers.get(key) ?? 'none';
+      if (tier === 'none') return;
       const arr = perBatch.get(key) ?? [];
       arr.push({ tier, code: String(item.code ?? '').trim() });
       perBatch.set(key, arr);

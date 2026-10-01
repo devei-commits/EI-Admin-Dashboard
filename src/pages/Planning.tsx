@@ -62,11 +62,11 @@ import {
   batchCoverageBadgeClass,
   batchCoverageLabel,
   batchCoverageRowClass,
-  batchCoverageTier,
   batchCoverageDetailMap,
   effectivePmLinesForBatch,
   isItemFullyCovered,
   itemCoverageTierFromBatches,
+  poolCoverageTiers,
   // Aliased: `Planning` (below) has its own identical local closure of the same name, scoped to
   // its own component body — only `PlanningBatchesTab` (a separate top-level function) uses this
   // module-level import, to key into `batchCoverageTierMap`'s result.
@@ -1729,6 +1729,20 @@ function apiRowToSalesOrder(row: PlanningExtractedRow): SalesOrder {
 /** Batch BOM line shapes from API */
 interface BatchRmLine { inci_name?: string; rm_code?: string; pct_w_w?: number; uom?: string; phase?: string; raw_material_id?: number }
 interface BatchPmLine { description?: string; pm_code?: string; qty_per_unit?: number; uom?: string }
+
+/**
+ * Per-unit PM qty for a line taken from the PI's packaging snapshot, which stores order TOTALS
+ * (`quantity`), not per-unit values. Falling back to 1 saved every fractional item (a sticker or
+ * shipper at 0.005/unit) as 1 per unit; derive it as total ÷ order units instead.
+ */
+function pmQtyPerUnitFromSnapshot(item: PackagingMaterial, orderQty: string | number | undefined): number {
+  const explicit = Number(item.value);
+  if (explicit > 0) return explicit;
+  const units = parseFloat(String(orderQty ?? '').replace(/[^\d.]/g, ''));
+  const total = Number(item.quantity);
+  if (units > 0 && total > 0) return Math.round((total / units) * 1e6) / 1e6;
+  return 1;
+}
 
 /** Row shape for Raise PR from batch detail (single item + shortfall). */
 interface BatchDetailRowForPr {
@@ -4128,7 +4142,7 @@ const Planning = () => {
         name: item.name,
         quantity: item.quantity,
         unit: item.unit,
-        value: (item as PackagingMaterial).value ?? 1,
+        value: pmQtyPerUnitFromSnapshot(item as PackagingMaterial, selectedSOForBatch.orderQty),
         percentage: (item as PackagingMaterial).percentage ?? 0,
         code: (item as PackagingMaterial).code,
       })));
@@ -5249,7 +5263,8 @@ const Planning = () => {
         const kgPerUnit = orderQty > 0 && totalKg > 0 ? totalKg / orderQty : 0;
         const unitsForBatch = kgPerUnit > 0 ? sizeKg / kgPerUnit : 0;
         const qtyPerUnit = Number(line.qty_per_unit ?? line.qty ?? 1) || 1;
-        out.set(key, Math.round(unitsForBatch * qtyPerUnit));
+        // Exact, matching RM and the backend Total Req (see lib/itemsInvolvedBatchCoverage).
+        out.set(key, roundMaterialQty(unitsForBatch * qtyPerUnit));
       }
     }
     return out;
@@ -5334,16 +5349,8 @@ const Planning = () => {
     // Allocation is over ALL batches the item appears in (matching getItemRequiredInBatch), then
     // read back for the sent ones only — the same set the modal lists.
     const alloc = allocateConsolidatedReqAcrossBatches(item, getUsedInBatchesForItem(item));
-    const batchQtys = batches.map((batch) => Number(alloc.get(releaseBatchPickKey(batch))) || 0);
-
-    const sih = Number(item.sihNum) || 0;
-    const poQty = Number(item.poQtyNum) || 0;
-    const totalRequired = batchQtys.reduce((sum, qty) => sum + qty, 0);
-    const itemFullyCovered = isItemFullyCovered(totalRequired, sih, poQty);
-
-    const tier = itemCoverageTierFromBatches(
-      batchQtys.map((batchQty) => batchCoverageTier({ batchQty, sih, poQty, itemFullyCovered }))
-    );
+    const tiers = poolCoverageTiers(batches, alloc, item.sihNum, item.poQtyNum);
+    const tier = itemCoverageTierFromBatches(batches.map((batch) => tiers.get(releaseBatchPickKey(batch)) ?? 'none'));
     itemsInvolvedCoverageTierCache.set(cacheKey, tier);
     return tier;
   };
@@ -6342,7 +6349,12 @@ const Planning = () => {
       );
     } else {
       setBomFormula([]);
-      setBomPackaging(order.packagingMaterials ?? []);
+      setBomPackaging(
+        (order.packagingMaterials ?? []).map((item) => ({
+          ...item,
+          value: pmQtyPerUnitFromSnapshot(item as PackagingMaterial, order.orderQty),
+        }))
+      );
       setBomLevelSG(
         resolveBomLevelSgFromPr(
           prSpecBulkForBom,
@@ -9153,6 +9165,9 @@ const Planning = () => {
         const coverageSih = Number(usedInModalItem.sihNum) || 0;
         const coveragePo = Number(usedInModalItem.poQtyNum) || 0;
         const itemFullyCovered = isItemFullyCovered(usedInTotalRequired, coverageSih, coveragePo);
+        // One running pool across the listed batches, so the tags add up to the item's shortage.
+        const usedInAlloc = allocateConsolidatedReqAcrossBatches(usedInModalItem, allUsedInRows);
+        const usedInTiers = poolCoverageTiers(rows, usedInAlloc, coverageSih, coveragePo);
         return (
           <PlanningModalShell onClose={() => setUsedInModalItem(null)} z="z-[100]">
             <div role="dialog" aria-modal="true" aria-label={`Batches using ${usedInModalItem.code}`} className="bg-surface w-full max-w-4xl rounded-xl shadow-xl border border-border max-h-[85vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
@@ -9228,12 +9243,7 @@ const Planning = () => {
                     <tbody>
                       {rows.map((row, idx) => {
                         const batchQty = Number(getItemRequiredInBatch(usedInModalItem, row)) || 0;
-                        const coverageTier = batchCoverageTier({
-                          batchQty,
-                          sih: coverageSih,
-                          poQty: coveragePo,
-                          itemFullyCovered,
-                        });
+                        const coverageTier = usedInTiers.get(releaseBatchPickKey(row)) ?? 'none';
                         const tintClass = batchCoverageRowClass(coverageTier);
                         return (
                         <tr

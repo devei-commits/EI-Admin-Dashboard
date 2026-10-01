@@ -13,6 +13,7 @@ import {
   batchCoverageTierMap,
   isItemFullyCovered,
   itemCoverageTierFromBatches,
+  poolCoverageTiers,
   releaseBatchPickKey,
   type BatchCoverageTier,
   type ItemsInvolvedAllocationRow,
@@ -227,10 +228,12 @@ describe('batch-centric coverage (Batches tab)', () => {
     expect(alloc.get(releaseBatchPickKey(batches[1]))).toBe(30000);
   });
 
-  it('batchCoverageTierMap tints both batches yellow, keyed by releaseBatchPickKey', () => {
+  it('batchCoverageTierMap: the one 30,000 PO covers one batch, not both', () => {
+    // Both batches used to read yellow — each judged against the whole PO on its own — though one
+    // PO of 30,000 can only cover one 30,000 batch. With a shared pool the second is short.
     const tiers = batchCoverageTierMap([item], batches);
     expect(tiers.get(releaseBatchPickKey(batches[0]))).toBe('yellow');
-    expect(tiers.get(releaseBatchPickKey(batches[1]))).toBe('yellow');
+    expect(tiers.get(releaseBatchPickKey(batches[1]))).toBe('red');
     expect(tiers.size).toBe(2);
   });
 
@@ -242,7 +245,7 @@ describe('batch-centric coverage (Batches tab)', () => {
     const tiers = batchCoverageTierMap([item], [unsent, batches[1], thirdSent]);
     expect(tiers.has(releaseBatchPickKey(unsent))).toBe(false);
     expect(tiers.get(releaseBatchPickKey(batches[1]))).toBe('yellow');
-    expect(tiers.get(releaseBatchPickKey(thirdSent))).toBe('yellow');
+    expect(tiers.get(releaseBatchPickKey(thirdSent))).toBe('red');
   });
 
   it('excluding an unsent batch can bring sent demand within supply — greens the rest', () => {
@@ -388,5 +391,52 @@ describe('why the two tabs disagree — item scope vs batch scope', () => {
     const tiers = batchCoverageTierMap([bottle, label], twoBatches);
     const detail = batchCoverageDetailMap([bottle, label], twoBatches);
     for (const [k, d] of detail) expect(tiers.get(k)).toBe(d.tier);
+  });
+});
+
+describe('poolCoverageTiers — batches share one pool of stock + PO', () => {
+  const batch = (id: number, dueDate: string): PlanningBatchAllRow => ({
+    id,
+    planningExtractedId: 900 + id,
+    sequence: 1,
+    batchCode: `PE-${900 + id}-B1`,
+    sizeKg: 1,
+    rmLines: [],
+    pmLines: [],
+    sent: true,
+    soNumber: `SO-${id}`,
+    dueDate,
+  });
+  const qtys = (pairs: [PlanningBatchAllRow, number][]) =>
+    new Map(pairs.map(([b, q]) => [releaseBatchPickKey(b), q]));
+
+  it('stops reading IN STOCK once earlier batches have used the stock up (FRAGILE STICKER case)', () => {
+    // SIH 5,000, no PO, three 2,000-pc batches: stock covers the first two, not the third.
+    // Judged one at a time all three read IN STOCK although the item was short.
+    const [a, b, c] = [batch(1, '2026-10-01'), batch(2, '2026-10-02'), batch(3, '2026-10-03')];
+    const tiers = poolCoverageTiers([a, b, c], qtys([[a, 2000], [b, 2000], [c, 2000]]), 5000, 0);
+    expect([a, b, c].map((x) => tiers.get(releaseBatchPickKey(x)))).toEqual(['pink', 'pink', 'red']);
+  });
+
+  it('moves on to the PO after stock, then SHORT', () => {
+    const [a, b, c] = [batch(1, '2026-10-01'), batch(2, '2026-10-02'), batch(3, '2026-10-03')];
+    const tiers = poolCoverageTiers([a, b, c], qtys([[a, 100], [b, 100], [c, 100]]), 100, 100);
+    expect([a, b, c].map((x) => tiers.get(releaseBatchPickKey(x)))).toEqual(['pink', 'yellow', 'red']);
+  });
+
+  it('serves the earliest due date first, whatever order the batches are listed in', () => {
+    const late = batch(1, '2026-12-01');
+    const early = batch(2, '2026-10-01');
+    const tiers = poolCoverageTiers([late, early], qtys([[late, 100], [early, 100]]), 100, 0);
+    expect(tiers.get(releaseBatchPickKey(early))).toBe('pink');
+    expect(tiers.get(releaseBatchPickKey(late))).toBe('red');
+  });
+
+  it('reads green for every batch when the total is covered, and leaves zero-need batches untinted', () => {
+    const [a, b, z] = [batch(1, '2026-10-01'), batch(2, '2026-10-02'), batch(3, '2026-10-03')];
+    const tiers = poolCoverageTiers([a, b, z], qtys([[a, 40], [b, 60], [z, 0]]), 100, 0);
+    expect(tiers.get(releaseBatchPickKey(a))).toBe('green');
+    expect(tiers.get(releaseBatchPickKey(b))).toBe('green');
+    expect(tiers.get(releaseBatchPickKey(z))).toBe('none');
   });
 });
