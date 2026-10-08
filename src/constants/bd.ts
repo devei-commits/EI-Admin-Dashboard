@@ -5,7 +5,7 @@
  * identically to the rest of the tool. Light design language ONLY (no dark HTML
  * popup chrome).
  */
-import type { LucideIcon } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react'
 import {
   Gem, Crown, Medal, Shield,
   UserCheck, FileSignature, ClipboardList, Package, Phone, IndianRupee, Banknote,
